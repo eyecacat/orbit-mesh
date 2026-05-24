@@ -55,6 +55,7 @@ export default function OyunScreen() {
   const barAnim = useRef(new Animated.Value(1)).current;
   const scoreAnim = useRef(new Animated.Value(1)).current;
   const shakeAnim = useRef(new Animated.Value(0)).current;
+  const handleTimeoutRef = useRef<() => void>(() => {});
 
   useEffect(() => {
     AsyncStorage.getItem("orbit_game_highscore").then(s => {
@@ -78,38 +79,17 @@ export default function OyunScreen() {
     setGameState("playing");
   };
 
-  const startTimer = useCallback(() => {
-    if (timerRef.current) clearInterval(timerRef.current);
-    Animated.timing(barAnim, { toValue: 0, duration: QUESTION_TIME * 1000, useNativeDriver: false }).start();
-    timerRef.current = setInterval(() => {
-      setTimeLeft(prev => {
-        if (prev <= 1) {
-          clearInterval(timerRef.current!);
-          handleTimeout();
-          return 0;
-        }
-        return prev - 1;
-      });
-    }, 1000);
-  }, []);
-
   const stopTimer = () => {
     if (timerRef.current) clearInterval(timerRef.current);
+    timerRef.current = null;
     barAnim.stopAnimation();
   };
 
-  useEffect(() => {
-    if (gameState === "playing") {
-      barAnim.setValue(1);
-      setTimeLeft(QUESTION_TIME);
-      startTimer();
-    }
-    return stopTimer;
-  }, [gameState, questionIndex]);
-
   const handleTimeout = () => {
+    if (gameState !== "playing") return;
     stopTimer();
-    const q = questions[questionIndex]!;
+    const q = questions[questionIndex];
+    if (!q) return;
     setSelected(-1);
     setIsCorrect(false);
     setCombo(0);
@@ -122,6 +102,31 @@ export default function OyunScreen() {
       setTimeout(() => endGame(), 2000);
     }
   };
+
+  handleTimeoutRef.current = handleTimeout;
+
+  const startTimer = useCallback(() => {
+    if (timerRef.current) clearInterval(timerRef.current);
+    Animated.timing(barAnim, { toValue: 0, duration: QUESTION_TIME * 1000, useNativeDriver: false }).start();
+    timerRef.current = setInterval(() => {
+      setTimeLeft(prev => {
+        if (prev <= 1) {
+          setTimeout(() => handleTimeoutRef.current(), 0);
+          return 0;
+        }
+        return prev - 1;
+      });
+    }, 1000);
+  }, []);
+
+  useEffect(() => {
+    if (gameState === "playing") {
+      barAnim.setValue(1);
+      setTimeLeft(QUESTION_TIME);
+      startTimer();
+    }
+    return stopTimer;
+  }, [gameState, questionIndex]);
 
   const handleAnswer = (idx: number) => {
     if (selected !== null || gameState !== "playing") return;
