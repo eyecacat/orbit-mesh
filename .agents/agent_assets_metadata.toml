@@ -1,0 +1,14 @@
+uploads = []
+outputs = []
+
+[[generated]]
+id = "BLkiA84JxDOpp23J6U_1E"
+uri = "file://artifacts/orbit-mesh/assets/images/icon.png"
+type = "image"
+title = "generated_image"
+
+[[generated]]
+id = "2AHudqxlQvk-MC4ab3CQF"
+uri = "file://artifacts/orbit-mesh/assets/images/space_bg.png"
+type = "image"
+title = "generated_image"

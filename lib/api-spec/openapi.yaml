@@ -3,20 +3,32 @@ info:
   # Do not change the title, if the title changes, the import paths will be broken
   title: Api
   version: 0.1.0
-  description: API specification
+  description: ORBIT-MESH API specification
 servers:
   - url: /api
     description: Base API path
 tags:
   - name: health
     description: Health operations
+  - name: auth
+    description: Authentication
+  - name: hayatagi
+    description: HayatAğı - Life Web feature
+  - name: observations
+    description: Astronomy observations
+  - name: nabiz
+    description: Nabız - Pulse feature
+  - name: missions
+    description: Science missions
+  - name: magnetometer
+    description: Magnetometer logs
+
 paths:
   /healthz:
     get:
       operationId: healthCheck
       tags: [health]
       summary: Health check
-      description: Returns server health status
       responses:
         "200":
           description: Healthy
@@ -24,7 +36,506 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/HealthStatus"
+
+  /auth/register:
+    post:
+      operationId: authRegister
+      tags: [auth]
+      summary: Register a new user
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/RegisterRequest"
+      responses:
+        "201":
+          description: User created
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AuthResponse"
+        "400":
+          description: Validation error
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "409":
+          description: Email already exists
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+
+  /auth/login:
+    post:
+      operationId: authLogin
+      tags: [auth]
+      summary: Login with email and password
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/LoginRequest"
+      responses:
+        "200":
+          description: Login successful
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AuthResponse"
+        "401":
+          description: Invalid credentials
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+
+  /auth/logout:
+    post:
+      operationId: authLogout
+      tags: [auth]
+      summary: Logout
+      responses:
+        "200":
+          description: Logged out
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/SuccessResponse"
+
+  /auth/me:
+    get:
+      operationId: authMe
+      tags: [auth]
+      summary: Get current user
+      security:
+        - bearerAuth: []
+      responses:
+        "200":
+          description: Current user
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/User"
+        "401":
+          description: Unauthorized
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+
+  /auth/profile:
+    put:
+      operationId: updateProfile
+      tags: [auth]
+      summary: Update user profile
+      security:
+        - bearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/UpdateProfileRequest"
+      responses:
+        "200":
+          description: Profile updated
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/User"
+
+  /auth/contacts:
+    get:
+      operationId: getContacts
+      tags: [auth]
+      summary: Get emergency contacts
+      security:
+        - bearerAuth: []
+      responses:
+        "200":
+          description: List of contacts
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/Contact"
+    post:
+      operationId: addContact
+      tags: [auth]
+      summary: Add emergency contact
+      security:
+        - bearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/ContactRequest"
+      responses:
+        "201":
+          description: Contact added
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Contact"
+
+  /auth/contacts/{id}:
+    delete:
+      operationId: deleteContact
+      tags: [auth]
+      summary: Delete emergency contact
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+      responses:
+        "200":
+          description: Contact deleted
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/SuccessResponse"
+
+  /hayat-agi/checkin:
+    post:
+      operationId: submitCheckin
+      tags: [hayatagi]
+      summary: Submit daily check-in status
+      security:
+        - bearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/CheckinRequest"
+      responses:
+        "200":
+          description: Check-in recorded
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Checkin"
+
+  /hayat-agi/network:
+    get:
+      operationId: getNetwork
+      tags: [hayatagi]
+      summary: Get user network status
+      security:
+        - bearerAuth: []
+      responses:
+        "200":
+          description: Network status
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/NetworkStatus"
+
+  /hayat-agi/history:
+    get:
+      operationId: getCheckinHistory
+      tags: [hayatagi]
+      summary: Get check-in history
+      security:
+        - bearerAuth: []
+      responses:
+        "200":
+          description: Check-in history
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/Checkin"
+
+  /hayat-agi/groups:
+    get:
+      operationId: getGroups
+      tags: [hayatagi]
+      summary: Get user's HayatAğı groups
+      security:
+        - bearerAuth: []
+      responses:
+        "200":
+          description: List of groups
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/Group"
+    post:
+      operationId: createGroup
+      tags: [hayatagi]
+      summary: Create a new group
+      security:
+        - bearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/GroupRequest"
+      responses:
+        "201":
+          description: Group created
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Group"
+
+  /hayat-agi/streak:
+    get:
+      operationId: getStreak
+      tags: [hayatagi]
+      summary: Get network safety streak
+      security:
+        - bearerAuth: []
+      responses:
+        "200":
+          description: Streak info
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/StreakInfo"
+
+  /observations:
+    get:
+      operationId: getObservations
+      tags: [observations]
+      summary: Get astronomy observations
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: public
+          in: query
+          schema:
+            type: boolean
+        - name: userId
+          in: query
+          schema:
+            type: integer
+      responses:
+        "200":
+          description: List of observations
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/Observation"
+    post:
+      operationId: createObservation
+      tags: [observations]
+      summary: Create astronomy observation
+      security:
+        - bearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/ObservationRequest"
+      responses:
+        "201":
+          description: Observation created
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Observation"
+
+  /observations/{id}:
+    put:
+      operationId: updateObservation
+      tags: [observations]
+      summary: Update observation
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/ObservationRequest"
+      responses:
+        "200":
+          description: Observation updated
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Observation"
+    delete:
+      operationId: deleteObservation
+      tags: [observations]
+      summary: Delete observation
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+      responses:
+        "200":
+          description: Observation deleted
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/SuccessResponse"
+
+  /nabiz/pulse:
+    post:
+      operationId: updatePulse
+      tags: [nabiz]
+      summary: Update user pulse (heartbeat)
+      security:
+        - bearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/PulseRequest"
+      responses:
+        "200":
+          description: Pulse updated
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/SuccessResponse"
+
+  /nabiz/score:
+    get:
+      operationId: getNabizScore
+      tags: [nabiz]
+      summary: Get network health score
+      security:
+        - bearerAuth: []
+      responses:
+        "200":
+          description: Nabız score
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/NabizScore"
+
+  /nabiz/global:
+    get:
+      operationId: getGlobalNabiz
+      tags: [nabiz]
+      summary: Get global pulse statistics
+      responses:
+        "200":
+          description: Global nabız data
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/GlobalNabiz"
+
+  /missions:
+    get:
+      operationId: getMissions
+      tags: [missions]
+      summary: Get active science missions
+      security:
+        - bearerAuth: []
+      responses:
+        "200":
+          description: List of missions
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/Mission"
+
+  /missions/{id}/complete:
+    post:
+      operationId: completeMission
+      tags: [missions]
+      summary: Submit mission completion
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/MissionCompletionRequest"
+      responses:
+        "200":
+          description: Mission completed
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/SuccessResponse"
+
+  /magnetometer/logs:
+    get:
+      operationId: getMagnetometerLogs
+      tags: [magnetometer]
+      summary: Get magnetometer anomaly logs
+      security:
+        - bearerAuth: []
+      responses:
+        "200":
+          description: List of logs
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/MagnetometerLog"
+    post:
+      operationId: createMagnetometerLog
+      tags: [magnetometer]
+      summary: Save magnetometer anomaly log
+      security:
+        - bearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/MagnetometerLogRequest"
+      responses:
+        "201":
+          description: Log saved
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/MagnetometerLog"
+
 components:
+  securitySchemes:
+    bearerAuth:
+      type: http
+      scheme: bearer
+      bearerFormat: JWT
+
   schemas:
     HealthStatus:
       type: object
@@ -34,3 +545,491 @@ components:
       required:
         - status
 
+    ErrorResponse:
+      type: object
+      properties:
+        error:
+          type: string
+        message:
+          type: string
+      required:
+        - error
+
+    SuccessResponse:
+      type: object
+      properties:
+        success:
+          type: boolean
+        message:
+          type: string
+      required:
+        - success
+
+    RegisterRequest:
+      type: object
+      properties:
+        name:
+          type: string
+        email:
+          type: string
+        password:
+          type: string
+        city:
+          type: string
+      required:
+        - name
+        - email
+        - password
+
+    LoginRequest:
+      type: object
+      properties:
+        email:
+          type: string
+        password:
+          type: string
+      required:
+        - email
+        - password
+
+    AuthResponse:
+      type: object
+      properties:
+        user:
+          $ref: "#/components/schemas/User"
+        token:
+          type: string
+      required:
+        - user
+        - token
+
+    User:
+      type: object
+      properties:
+        id:
+          type: integer
+        name:
+          type: string
+        email:
+          type: string
+        city:
+          type: string
+        photoUrl:
+          type: string
+          nullable: true
+        nabizScore:
+          type: integer
+        createdAt:
+          type: string
+      required:
+        - id
+        - name
+        - email
+
+    UpdateProfileRequest:
+      type: object
+      properties:
+        name:
+          type: string
+        city:
+          type: string
+        photoUrl:
+          type: string
+
+    Contact:
+      type: object
+      properties:
+        id:
+          type: integer
+        name:
+          type: string
+        phone:
+          type: string
+        relationship:
+          type: string
+        userId:
+          type: integer
+        createdAt:
+          type: string
+      required:
+        - id
+        - name
+        - phone
+        - relationship
+        - userId
+
+    ContactRequest:
+      type: object
+      properties:
+        name:
+          type: string
+        phone:
+          type: string
+        relationship:
+          type: string
+      required:
+        - name
+        - phone
+        - relationship
+
+    CheckinRequest:
+      type: object
+      properties:
+        status:
+          type: string
+          enum: [ok, alert]
+        latitude:
+          type: number
+          nullable: true
+        longitude:
+          type: number
+          nullable: true
+      required:
+        - status
+
+    Checkin:
+      type: object
+      properties:
+        id:
+          type: integer
+        userId:
+          type: integer
+        status:
+          type: string
+        latitude:
+          type: number
+          nullable: true
+        longitude:
+          type: number
+          nullable: true
+        createdAt:
+          type: string
+      required:
+        - id
+        - userId
+        - status
+        - createdAt
+
+    NetworkMember:
+      type: object
+      properties:
+        id:
+          type: integer
+        name:
+          type: string
+        city:
+          type: string
+          nullable: true
+        todayStatus:
+          type: string
+          nullable: true
+        lastCheckin:
+          type: string
+          nullable: true
+        relationship:
+          type: string
+      required:
+        - id
+        - name
+        - relationship
+
+    NetworkStatus:
+      type: object
+      properties:
+        myStatus:
+          type: string
+          nullable: true
+        members:
+          type: array
+          items:
+            $ref: "#/components/schemas/NetworkMember"
+        totalCount:
+          type: integer
+        okCount:
+          type: integer
+        alertCount:
+          type: integer
+        pendingCount:
+          type: integer
+      required:
+        - members
+        - totalCount
+        - okCount
+        - alertCount
+        - pendingCount
+
+    StreakInfo:
+      type: object
+      properties:
+        streak:
+          type: integer
+        longestStreak:
+          type: integer
+        lastCheckin:
+          type: string
+          nullable: true
+        message:
+          type: string
+      required:
+        - streak
+        - longestStreak
+        - message
+
+    Group:
+      type: object
+      properties:
+        id:
+          type: integer
+        name:
+          type: string
+        adminId:
+          type: integer
+        checkInTime:
+          type: string
+        memberCount:
+          type: integer
+        createdAt:
+          type: string
+      required:
+        - id
+        - name
+        - adminId
+        - checkInTime
+        - memberCount
+
+    GroupRequest:
+      type: object
+      properties:
+        name:
+          type: string
+        checkInTime:
+          type: string
+      required:
+        - name
+        - checkInTime
+
+    Observation:
+      type: object
+      properties:
+        id:
+          type: integer
+        userId:
+          type: integer
+        userName:
+          type: string
+        type:
+          type: string
+        title:
+          type: string
+        description:
+          type: string
+          nullable: true
+        latitude:
+          type: number
+          nullable: true
+        longitude:
+          type: number
+          nullable: true
+        photoUrl:
+          type: string
+          nullable: true
+        isPublic:
+          type: boolean
+        likeCount:
+          type: integer
+        commentCount:
+          type: integer
+        createdAt:
+          type: string
+      required:
+        - id
+        - userId
+        - userName
+        - type
+        - title
+        - isPublic
+        - likeCount
+        - commentCount
+        - createdAt
+
+    ObservationRequest:
+      type: object
+      properties:
+        type:
+          type: string
+        title:
+          type: string
+        description:
+          type: string
+        latitude:
+          type: number
+        longitude:
+          type: number
+        photoUrl:
+          type: string
+        isPublic:
+          type: boolean
+      required:
+        - type
+        - title
+
+    PulseRequest:
+      type: object
+      properties:
+        city:
+          type: string
+        latitude:
+          type: number
+          nullable: true
+        longitude:
+          type: number
+          nullable: true
+      required:
+        - city
+
+    NabizScore:
+      type: object
+      properties:
+        score:
+          type: integer
+        networkSize:
+          type: integer
+        activeContacts:
+          type: integer
+        silentContacts:
+          type: array
+          items:
+            type: object
+            properties:
+              name:
+                type: string
+              daysSilent:
+                type: integer
+            required:
+              - name
+              - daysSilent
+        lastUpdated:
+          type: string
+      required:
+        - score
+        - networkSize
+        - activeContacts
+        - silentContacts
+
+    GlobalNabiz:
+      type: object
+      properties:
+        totalActiveUsers:
+          type: integer
+        regions:
+          type: array
+          items:
+            $ref: "#/components/schemas/RegionPulse"
+        globalScore:
+          type: integer
+      required:
+        - totalActiveUsers
+        - regions
+        - globalScore
+
+    RegionPulse:
+      type: object
+      properties:
+        city:
+          type: string
+        country:
+          type: string
+        activeUsers:
+          type: integer
+        pulseScore:
+          type: integer
+        latitude:
+          type: number
+        longitude:
+          type: number
+      required:
+        - city
+        - country
+        - activeUsers
+        - pulseScore
+        - latitude
+        - longitude
+
+    Mission:
+      type: object
+      properties:
+        id:
+          type: integer
+        title:
+          type: string
+        description:
+          type: string
+        type:
+          type: string
+        startDate:
+          type: string
+        endDate:
+          type: string
+        participantCount:
+          type: integer
+        isCompleted:
+          type: boolean
+        badge:
+          type: string
+      required:
+        - id
+        - title
+        - description
+        - type
+        - participantCount
+        - isCompleted
+
+    MissionCompletionRequest:
+      type: object
+      properties:
+        notes:
+          type: string
+      required:
+        - notes
+
+    MagnetometerLog:
+      type: object
+      properties:
+        id:
+          type: integer
+        userId:
+          type: integer
+        x:
+          type: number
+        y:
+          type: number
+        z:
+          type: number
+        notes:
+          type: string
+          nullable: true
+        createdAt:
+          type: string
+      required:
+        - id
+        - userId
+        - x
+        - y
+        - z
+        - createdAt
+
+    MagnetometerLogRequest:
+      type: object
+      properties:
+        x:
+          type: number
+        y:
+          type: number
+        z:
+          type: number
+        notes:
+          type: string
+      required:
+        - x
+        - y
+        - z

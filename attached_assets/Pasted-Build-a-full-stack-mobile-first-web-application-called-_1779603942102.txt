@@ -1,0 +1,256 @@
+Build a full-stack mobile-first web application called ORBIT-MESH. 
+Use React (Vite) for frontend, Node.js + Express for backend, 
+and SQLite for database. The app must work as a PWA 
+(Progressive Web App) installable on both Android and iOS.
+Style with Tailwind CSS. Dark theme default. 
+Design language: space/cosmic — deep navy backgrounds, 
+cyan and amber accents, clean modern UI.
+
+---
+
+## AUTH SYSTEM
+- Email + password registration and login
+- JWT tokens, stored in httpOnly cookies
+- User profile: name, city, emergency contacts (up to 5 people, 
+  stored as name + phone + relationship)
+- Profile photo upload
+- Settings page: notification preferences, language (TR/EN)
+
+---
+
+## FEATURE 1: HayatAğı (Life Web)
+This is the CORE daily-use feature that makes users open the 
+app every single day.
+
+Every evening at 21:00 local time, send a push notification: 
+"İyisin? / Are you OK?"
+
+User sees a single screen with two large buttons:
+- ✓ İyiyim (I'm OK) — green
+- 🆘 Yardım (Help) — red
+
+If user does NOT respond within 15 minutes:
+- Send automatic alert to all emergency contacts via in-app 
+  notification
+- Show alert on map: "[Name] has not confirmed status 
+  at [location]"
+- If internet is unavailable, queue the alert for BLE mesh relay
+
+HayatAğı Network View:
+- Show a visual "web" of connected contacts
+- Each node = a person
+- Green = confirmed OK today
+- Yellow = not yet responded
+- Red = alert triggered
+- Animated connections between nodes
+- Users can see their whole family/friend network status at a glance
+
+Group feature: Create a HayatAğı group (family, class, 
+neighborhood). All members see each other's daily status.
+Group admin can set custom check-in times.
+
+Statistics: "Your network has been safe for 47 consecutive days" 
+Streak system, gentle gamification.
+
+---
+
+## FEATURE 2: BLE Deneyap Kart Connection
+- Bluetooth Low Energy scanner
+- Scan for nearby ORBIT-MESH nodes (advertise UUID: 
+  "ORBIT-MESH-NODE")
+- On connection: display node ID, battery level, signal strength
+- Real-time data stream from node:
+  * Magnetometer readings (x, y, z in µT)
+  * VLF signal strength (0-100 scale)
+  * Node uptime
+  * Mesh network: how many other nodes detected
+- Send commands to node: 
+  * "SEND_TEST_MSG:[message]" 
+  * "SET_ALERT_MODE:1/0"
+  * "REQUEST_STATUS"
+- Show live graph of magnetometer data (last 60 seconds)
+- Connection log with timestamps
+
+---
+
+## FEATURE 3: Phone Magnetometer Monitor
+- Access device magnetometer via Web API 
+  (if available on device)
+- Show real-time 3-axis readings with animated gauge
+- Live chart: rolling 5-minute history
+- Baseline calibration: user sets "normal" for their location
+- Anomaly detection: if reading deviates >15% from baseline 
+  for >30 seconds, trigger soft alert
+- "Cosmic Event" detector: compare with NASA DONKI API 
+  for active geomagnetic storms
+  (API: https://api.nasa.gov/DONKI/GST?api_key=DEMO_KEY)
+- Manual log: user can mark and save anomaly events 
+  with notes
+- Export data as CSV
+
+---
+
+## FEATURE 4: Astronomy Observation Network (for students)
+- "Gözlem Günlüğüm" (My Observation Log)
+  * Log celestial events: what, when, location, description, photo
+  * Each log gets GPS coordinates auto-filled
+  * Privacy: public or private
+  
+- Community Feed: 
+  * Browse public observations from other users on a map
+  * Filter by: event type, date, location radius
+  * Like and comment on observations
+  * "Yakınımda Ne Var?" — what others observed near me today
+
+- Live Sky Events widget:
+  * Fetch from NASA APOD API daily
+  * Show tonight's visible planets for user's location
+  * ISS pass times (fetch from Open Notify API: 
+    http://api.open-notify.org/iss-pass.json)
+  * Simple star map using basic canvas rendering
+
+- "Bilim Görevi" (Science Mission) system:
+  * Weekly community missions: "This week: observe and 
+    log magnetic anomalies in your city"
+  * Participants see each other on map in real time
+  * Leaderboard by city and country
+  * Badge system: Bronze/Silver/Gold observer
+
+---
+
+## FEATURE 5: Nabız (Pulse) — THE 2 BILLION USER FEATURE
+This is the feature that makes ORBIT-MESH irreplaceable globally.
+
+Concept: A passive, continuous "heartbeat" of your network.
+Unlike HayatAğı (daily check-in), Nabız is always-on background 
+monitoring.
+
+How it works:
+- Every user's app passively logs: 
+  * "Last app open" timestamp
+  * Phone magnetometer reading (once per hour, background)
+  * Approximate location (city-level only, privacy-first)
+  
+- Your Nabız score: a simple number 1-100 showing 
+  "network health" — how recently all your contacts were active
+
+- If ANY contact goes silent for user-defined period 
+  (default: 48 hours), gentle notification: 
+  "[Name] hasn't been seen in 2 days. Check in?"
+
+- During disasters: Nabız switches to high-frequency mode 
+  (every 15 min check-in)
+
+- Global Nabız Map: 
+  * World map showing aggregated "pulse" density
+  * Bright areas = active users
+  * Dimming areas = possible communication disruption
+  * This map becomes a real-time disaster detection tool
+  * If a city's Nabız suddenly drops: possible disaster indicator
+  * Completely anonymous at global level
+
+- "Dünya'nın Nabzı" (World's Pulse) — public dashboard:
+  * Show live global activity heat map
+  * Historical: "Istanbul's pulse dropped 73% on Feb 6, 2023 
+    at 04:17" — earthquake correlation visualization
+  * Makes the app feel connected to something bigger than yourself
+
+Why this gets 2 billion users:
+- Grandparents use it to feel connected to grandchildren
+- Parents use it for kids at university
+- Friends use it to casually stay connected without 
+  messaging pressure
+- Scientists use it for disaster correlation research
+- It costs nothing, requires nothing — just have the app
+
+---
+
+## TECHNICAL REQUIREMENTS
+
+Backend (Node.js + Express):
+- /api/auth: register, login, logout, me
+- /api/hayat-agi: get network, update status, create group
+- /api/observations: CRUD for astronomy logs
+- /api/nabiz: update pulse, get network health score
+- /api/missions: get active missions, submit completion
+- WebSocket support for real-time HayatAğı status updates
+- SQLite database with tables:
+  users, contacts, checkins, observations, 
+  nabiz_logs, missions, mission_completions
+
+Frontend (React + Vite + Tailwind):
+Pages:
+1. Landing page (not logged in): 
+   Hero with animated starfield background,
+   "ORBIT-MESH — Bağlı Kal, Güvende Kal",
+   Feature overview, Download CTA
+   
+2. Dashboard (logged in):
+   - Top: "Dünya'nın Nabzı" mini widget
+   - HayatAğı network circle (animated)
+   - Today's check-in status for all contacts
+   - Quick astronomy widget (tonight's sky)
+   - Active mission banner
+
+3. HayatAğı page:
+   - Full network visualization (D3.js force graph or 
+     simple CSS circles)
+   - Add/remove contacts
+   - Group management
+   - Check-in history calendar
+
+4. Magnetometer page:
+   - Live gauges (BLE device OR phone sensor)
+   - 5-minute chart
+   - Anomaly log
+   - Cosmic event correlation panel
+
+5. Astronomy page:
+   - Map of community observations
+   - My observation log
+   - Active missions
+   - NASA APOD daily image
+
+6. Nabız page:
+   - World map (use Leaflet.js)
+   - My network health score
+   - Global pulse statistics
+   - Historical disaster correlations
+
+7. Profile/Settings page
+
+Design details:
+- Color palette: 
+  background: #0a0e1a (deep space)
+  primary: #00d4ff (cyan)
+  accent: #ff9500 (amber)
+  success: #00ff88 (green)
+  danger: #ff3b5c (red)
+  card bg: #111827
+- Font: Space Grotesk or Orbitron for headings, 
+  Inter for body
+- Animations: subtle particle/star background on landing,
+  pulse animation on Nabız elements,
+  smooth transitions between pages
+- Mobile-first: all layouts work perfectly on 375px width
+
+PWA Config:
+- manifest.json with app icons
+- Service worker for offline caching of last state
+- Push notification support (use Web Push API)
+- "Add to Home Screen" prompt
+
+---
+
+## START WITH:
+1. Project structure setup
+2. Database schema and migrations
+3. Auth system (register/login working)
+4. Basic dashboard layout
+5. HayatAğı core feature
+
+Build step by step, show me each completed section before 
+moving to the next. Use Turkish for all UI text, English for code.
+
+Make this feel like a real consumer app — not a demo. 
+Every interaction should feel smooth and intentional.
