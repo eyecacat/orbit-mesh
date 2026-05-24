@@ -17,6 +17,7 @@ import { setBaseUrl } from "@workspace/api-client-react";
 
 import { ErrorBoundary } from "@/components/ErrorBoundary";
 import { AuthProvider } from "@/contexts/AuthContext";
+import { EmergencyProvider } from "@/components/EmergencyProvider";
 
 setBaseUrl(`https://${process.env.EXPO_PUBLIC_DOMAIN}`);
 
@@ -32,7 +33,32 @@ function RootLayoutNav() {
       <Stack.Screen name="index" />
       <Stack.Screen name="(auth)" />
       <Stack.Screen name="(tabs)" />
-      <Stack.Screen name="magnetometer" options={{ headerShown: true, title: "Manyetometre", headerStyle: { backgroundColor: "#111827" }, headerTintColor: "#00d4ff" }} />
+      <Stack.Screen
+        name="magnetometer"
+        options={{
+          headerShown: true,
+          title: "Manyetometre",
+          headerStyle: { backgroundColor: "#111827" },
+          headerTintColor: "#00d4ff",
+          headerTitleStyle: { fontFamily: "Inter_700Bold" },
+        }}
+      />
+      <Stack.Screen
+        name="ble"
+        options={{ headerShown: false }}
+      />
+      <Stack.Screen
+        name="oyun"
+        options={{ headerShown: false }}
+      />
+      <Stack.Screen
+        name="emergency"
+        options={{
+          headerShown: false,
+          presentation: "fullScreenModal",
+          gestureEnabled: false,
+        }}
+      />
     </Stack>
   );
 }
@@ -60,8 +86,10 @@ export default function RootLayout() {
           <GestureHandlerRootView style={{ flex: 1, backgroundColor: "#0a0e1a" }}>
             <KeyboardProvider>
               <AuthProvider>
-                <StatusBar style="light" backgroundColor="#0a0e1a" />
-                <RootLayoutNav />
+                <EmergencyProvider>
+                  <StatusBar style="light" backgroundColor="#0a0e1a" />
+                  <RootLayoutNav />
+                </EmergencyProvider>
               </AuthProvider>
             </KeyboardProvider>
           </GestureHandlerRootView>

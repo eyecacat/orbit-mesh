@@ -4,7 +4,9 @@ import {
   Modal, TextInput, ActivityIndicator, RefreshControl, Alert,
 } from "react-native";
 import { Feather } from "@expo/vector-icons";
+import { LinearGradient } from "expo-linear-gradient";
 import { useQueryClient } from "@tanstack/react-query";
+import { router } from "expo-router";
 import {
   useGetObservations, useCreateObservation, useDeleteObservation,
   useGetMissions, useCompleteMission,
@@ -74,8 +76,12 @@ export default function AstronomiScreen() {
     if (loading) return <ActivityIndicator color="#00d4ff" style={{ marginTop: 40 }} />;
     if (!obs || obs.length === 0) return (
       <View style={styles.emptyState}>
-        <Feather name="telescope" size={40} color="#1e2a3d" />
+        <Feather name="eye" size={40} color="#1e2a3d" />
         <Text style={styles.emptyText}>Henüz gözlem yok</Text>
+        <TouchableOpacity style={styles.emptyAddBtn} onPress={() => setShowCreate(true)}>
+          <Feather name="plus" size={14} color="#00d4ff" />
+          <Text style={styles.emptyAddText}>Gözlem Ekle</Text>
+        </TouchableOpacity>
       </View>
     );
     return obs.map(o => (
@@ -115,6 +121,21 @@ export default function AstronomiScreen() {
           <Feather name="plus" size={18} color="#0a0e1a" />
         </TouchableOpacity>
       </View>
+
+      <TouchableOpacity style={styles.gameBanner} onPress={() => router.push("/oyun" as never)} activeOpacity={0.85}>
+        <LinearGradient colors={["#f59e0b" + "30", "#ff9500" + "15"]} style={styles.gameBannerGrad} start={{ x: 0, y: 0 }} end={{ x: 1, y: 1 }}>
+          <View style={styles.gameBannerIcon}>
+            <Feather name="star" size={24} color="#f59e0b" />
+          </View>
+          <View style={{ flex: 1 }}>
+            <Text style={styles.gameBannerTitle}>Galaksi Ustası</Text>
+            <Text style={styles.gameBannerSub}>Uzay bilgini test et · 20 Soruluk Quiz</Text>
+          </View>
+          <View style={styles.gameBannerPlay}>
+            <Feather name="play" size={16} color="#0a0e1a" />
+          </View>
+        </LinearGradient>
+      </TouchableOpacity>
 
       <View style={styles.tabBar}>
         {(["mine", "community", "missions"] as const).map(t => (
@@ -202,11 +223,7 @@ export default function AstronomiScreen() {
               <TouchableOpacity style={styles.cancelBtn} onPress={() => setShowCreate(false)}>
                 <Text style={styles.cancelBtnText}>İptal</Text>
               </TouchableOpacity>
-              <TouchableOpacity
-                style={[styles.confirmBtn, creating && { opacity: 0.6 }]}
-                onPress={() => createObs({ data: newObs })}
-                disabled={creating}
-              >
+              <TouchableOpacity style={[styles.confirmBtn, creating && { opacity: 0.6 }]} onPress={() => createObs({ data: newObs })} disabled={creating}>
                 <Text style={styles.confirmBtnText}>Kaydet</Text>
               </TouchableOpacity>
             </View>
@@ -219,23 +236,12 @@ export default function AstronomiScreen() {
           <View style={styles.modal}>
             <Text style={styles.modalTitle}>Görevi Tamamla</Text>
             <Text style={styles.fieldLabel}>Notlar</Text>
-            <TextInput
-              style={[styles.input, { height: 80 }]}
-              value={missionNotes}
-              onChangeText={setMissionNotes}
-              placeholder="Görevi nasıl tamamladını anlat..."
-              placeholderTextColor="#64748b"
-              multiline
-            />
+            <TextInput style={[styles.input, { height: 80 }]} value={missionNotes} onChangeText={setMissionNotes} placeholder="Görevi nasıl tamamladını anlat..." placeholderTextColor="#64748b" multiline />
             <View style={styles.modalBtns}>
               <TouchableOpacity style={styles.cancelBtn} onPress={() => setShowMissionModal(null)}>
                 <Text style={styles.cancelBtnText}>İptal</Text>
               </TouchableOpacity>
-              <TouchableOpacity
-                style={[styles.confirmBtn, completing && { opacity: 0.6 }]}
-                onPress={() => showMissionModal !== null && completeMission({ id: showMissionModal, data: { notes: missionNotes } })}
-                disabled={completing}
-              >
+              <TouchableOpacity style={[styles.confirmBtn, completing && { opacity: 0.6 }]} onPress={() => showMissionModal !== null && completeMission({ id: showMissionModal, data: { notes: missionNotes } })} disabled={completing}>
                 <Text style={styles.confirmBtnText}>Gönder</Text>
               </TouchableOpacity>
             </View>
@@ -248,26 +254,28 @@ export default function AstronomiScreen() {
 
 const styles = StyleSheet.create({
   container: { flex: 1, backgroundColor: "#0a0e1a" },
-  header: { flexDirection: "row", justifyContent: "space-between", alignItems: "center", padding: 16, paddingBottom: 0 },
+  header: { flexDirection: "row", justifyContent: "space-between", alignItems: "center", padding: 16, paddingBottom: 8 },
   title: { fontSize: 28, fontWeight: "800", color: "#ffffff", fontFamily: "Inter_700Bold" },
   createBtn: { backgroundColor: "#00d4ff", width: 36, height: 36, borderRadius: 18, alignItems: "center", justifyContent: "center" },
-  tabBar: { flexDirection: "row", marginHorizontal: 16, marginTop: 16, backgroundColor: "#111827", borderRadius: 12, padding: 4 },
+  gameBanner: { marginHorizontal: 16, marginBottom: 10, borderRadius: 14, overflow: "hidden", borderWidth: 1, borderColor: "#f59e0b" + "50" },
+  gameBannerGrad: { flexDirection: "row", alignItems: "center", padding: 14, gap: 12 },
+  gameBannerIcon: { width: 44, height: 44, borderRadius: 12, backgroundColor: "#f59e0b" + "20", alignItems: "center", justifyContent: "center" },
+  gameBannerTitle: { fontSize: 15, fontWeight: "800", color: "#ffffff", fontFamily: "Inter_700Bold" },
+  gameBannerSub: { fontSize: 12, color: "#94a3b8", fontFamily: "Inter_400Regular", marginTop: 2 },
+  gameBannerPlay: { width: 32, height: 32, borderRadius: 16, backgroundColor: "#f59e0b", alignItems: "center", justifyContent: "center" },
+  tabBar: { flexDirection: "row", marginHorizontal: 16, marginBottom: 4, backgroundColor: "#111827", borderRadius: 12, padding: 4 },
   tab: { flex: 1, alignItems: "center", paddingVertical: 8, borderRadius: 8 },
   activeTab: { backgroundColor: "#1e2a3d" },
   tabText: { color: "#64748b", fontSize: 13, fontFamily: "Inter_500Medium" },
   activeTabText: { color: "#00d4ff", fontFamily: "Inter_600SemiBold" },
   scroll: { padding: 16 },
-  emptyState: { alignItems: "center", paddingVertical: 60, gap: 12 },
+  emptyState: { alignItems: "center", paddingVertical: 50, gap: 12 },
   emptyText: { color: "#64748b", fontFamily: "Inter_400Regular" },
-  obsCard: {
-    backgroundColor: "#111827", borderRadius: 14, padding: 16, marginBottom: 12,
-    borderWidth: 1, borderColor: "#1e2a3d",
-  },
+  emptyAddBtn: { flexDirection: "row", alignItems: "center", gap: 6, backgroundColor: "#00d4ff" + "20", paddingHorizontal: 14, paddingVertical: 8, borderRadius: 10 },
+  emptyAddText: { color: "#00d4ff", fontFamily: "Inter_600SemiBold" },
+  obsCard: { backgroundColor: "#111827", borderRadius: 14, padding: 16, marginBottom: 12, borderWidth: 1, borderColor: "#1e2a3d" },
   obsHeader: { flexDirection: "row", alignItems: "center", gap: 8, marginBottom: 8 },
-  obsTypeTag: {
-    flexDirection: "row", alignItems: "center", gap: 4, paddingHorizontal: 8, paddingVertical: 3,
-    backgroundColor: "#00d4ff" + "20", borderRadius: 8,
-  },
+  obsTypeTag: { flexDirection: "row", alignItems: "center", gap: 4, paddingHorizontal: 8, paddingVertical: 3, backgroundColor: "#00d4ff" + "20", borderRadius: 8 },
   obsTypeText: { color: "#00d4ff", fontSize: 11, fontFamily: "Inter_500Medium" },
   obsDate: { flex: 1, color: "#64748b", fontSize: 12, fontFamily: "Inter_400Regular" },
   obsTitle: { fontSize: 16, fontWeight: "700", color: "#ffffff", fontFamily: "Inter_700Bold", marginBottom: 4 },
@@ -276,11 +284,8 @@ const styles = StyleSheet.create({
   obsUser: { color: "#64748b", fontSize: 12, fontFamily: "Inter_400Regular" },
   obsStats: { flexDirection: "row", alignItems: "center", gap: 6 },
   obsStatNum: { color: "#64748b", fontSize: 12, fontFamily: "Inter_400Regular" },
-  missionCard: {
-    backgroundColor: "#111827", borderRadius: 14, padding: 16, marginBottom: 12,
-    borderWidth: 1, borderColor: "#1e2a3d",
-  },
-  missionDone: { opacity: 0.7 },
+  missionCard: { backgroundColor: "#111827", borderRadius: 14, padding: 16, marginBottom: 12, borderWidth: 1, borderColor: "#1e2a3d" },
+  missionDone: { opacity: 0.6 },
   missionTop: { flexDirection: "row", alignItems: "center", gap: 8, marginBottom: 10 },
   badgePill: { paddingHorizontal: 10, paddingVertical: 4, borderRadius: 10 },
   badgeText: { fontSize: 12, fontFamily: "Inter_600SemiBold" },
@@ -297,11 +302,7 @@ const styles = StyleSheet.create({
   modal: { backgroundColor: "#111827", borderTopLeftRadius: 24, borderTopRightRadius: 24, padding: 24, maxHeight: "80%" },
   modalTitle: { fontSize: 18, fontWeight: "700", color: "#ffffff", fontFamily: "Inter_700Bold", marginBottom: 16 },
   fieldLabel: { color: "#94a3b8", fontSize: 13, fontFamily: "Inter_500Medium", marginBottom: 8 },
-  input: {
-    backgroundColor: "#0a0e1a", borderWidth: 1, borderColor: "#1e2a3d",
-    borderRadius: 12, padding: 14, color: "#ffffff", fontSize: 15, marginBottom: 14,
-    fontFamily: "Inter_400Regular",
-  },
+  input: { backgroundColor: "#0a0e1a", borderWidth: 1, borderColor: "#1e2a3d", borderRadius: 12, padding: 14, color: "#ffffff", fontSize: 15, marginBottom: 14, fontFamily: "Inter_400Regular" },
   typeBtn: { paddingHorizontal: 14, paddingVertical: 8, borderRadius: 10, borderWidth: 1, borderColor: "#1e2a3d", backgroundColor: "#0a0e1a" },
   typeBtnActive: { borderColor: "#00d4ff", backgroundColor: "#00d4ff" + "20" },
   typeBtnText: { color: "#64748b", fontSize: 13, fontFamily: "Inter_500Medium" },

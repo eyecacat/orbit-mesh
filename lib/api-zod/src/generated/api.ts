@@ -189,8 +189,10 @@ export const GetGroupsResponseItem = zod.object({
   "id": zod.number(),
   "name": zod.string(),
   "adminId": zod.number(),
+  "adminName": zod.string(),
   "checkInTime": zod.string(),
   "memberCount": zod.number(),
+  "isAdmin": zod.boolean(),
   "createdAt": zod.string().optional()
 })
 export const GetGroupsResponse = zod.array(GetGroupsResponseItem)
@@ -202,6 +204,46 @@ export const GetGroupsResponse = zod.array(GetGroupsResponseItem)
 export const CreateGroupBody = zod.object({
   "name": zod.string(),
   "checkInTime": zod.string()
+})
+
+
+/**
+ * @summary Get members of a group
+ */
+export const GetGroupMembersParams = zod.object({
+  "groupId": zod.coerce.number()
+})
+
+export const GetGroupMembersResponseItem = zod.object({
+  "id": zod.number(),
+  "groupId": zod.number(),
+  "userId": zod.number(),
+  "userName": zod.string(),
+  "userEmail": zod.string(),
+  "userCity": zod.string().nullish(),
+  "joinedAt": zod.string()
+})
+export const GetGroupMembersResponse = zod.array(GetGroupMembersResponseItem)
+
+
+/**
+ * @summary Invite a user to group by email
+ */
+export const InviteGroupMemberParams = zod.object({
+  "groupId": zod.coerce.number()
+})
+
+export const InviteGroupMemberBody = zod.object({
+  "email": zod.string()
+})
+
+
+/**
+ * @summary Remove a member from group
+ */
+export const RemoveGroupMemberParams = zod.object({
+  "groupId": zod.coerce.number(),
+  "userId": zod.coerce.number()
 })
 
 

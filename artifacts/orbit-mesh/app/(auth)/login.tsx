@@ -17,7 +17,7 @@ export default function LoginScreen() {
     mutation: {
       onSuccess: async (data) => {
         await login(data.token, data.user);
-        router.replace("/(tabs)/");
+        router.replace("/(tabs)");
       },
       onError: () => {
         Alert.alert("Hata", "Geçersiz email veya şifre");

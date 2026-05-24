@@ -409,6 +409,13 @@ importers:
         version: 3.25.76
 
   artifacts/orbit-mesh:
+    dependencies:
+      expo-sensors:
+        specifier: ^15.0.8
+        version: 15.0.8(expo@54.0.34)(react-native@0.81.5(@babel/core@7.29.0)(@types/react@19.1.17)(react@19.1.0))
+      expo-sms:
+        specifier: ^14.0.8
+        version: 14.0.8(expo@54.0.34)
     devDependencies:
       '@babel/core':
         specifier: ^7.25.2
@@ -3475,9 +3482,20 @@ packages:
       react-server-dom-webpack:
         optional: true
 
+  expo-sensors@15.0.8:
+    resolution: {integrity: sha512-ttibOSCYjFAMIfjV+vVukO1v7GKlbcPRfxcRqbTaSMGneewDwVSXbGFImY530fj1BR3mWq4n9jHnuDp8tAEY9g==}
+    peerDependencies:
+      expo: '*'
+      react-native: '*'
+
   expo-server@1.0.6:
     resolution: {integrity: sha512-vb5TBtskvEdzYuW79lATXutOEBfW5m6U4EFpNjCVZTnI7S//SAsLQkYEpn+EDfn84m6VQfzSGkIVR6YPaScKFA==}
     engines: {node: '>=20.16.0'}
+
+  expo-sms@14.0.8:
+    resolution: {integrity: sha512-yNdUUP4Y+arvQByXsSzY8UFPadezxcFPH4u1Ubab2VIRNmDJZf7TIAFmDi8dAbm5CPxbzjKBEbBIkmkVKppHHA==}
+    peerDependencies:
+      expo: '*'
 
   expo-splash-screen@31.0.13:
     resolution: {integrity: sha512-1epJLC1cDlwwj089R2h8cxaU5uk4ONVAC+vzGiTZH4YARQhL4Stlz1MbR6yAS173GMosvkE6CAeihR7oIbCkDA==}
@@ -9346,7 +9364,17 @@ snapshots:
       - '@types/react-dom'
       - supports-color
 
+  expo-sensors@15.0.8(expo@54.0.34)(react-native@0.81.5(@babel/core@7.29.0)(@types/react@19.1.17)(react@19.1.0)):
+    dependencies:
+      expo: 54.0.34(@babel/core@7.29.0)(@expo/metro-runtime@6.1.2)(expo-router@6.0.23)(react-native@0.81.5(@babel/core@7.29.0)(@types/react@19.1.17)(react@19.1.0))(react@19.1.0)(typescript@5.9.3)
+      invariant: 2.2.4
+      react-native: 0.81.5(@babel/core@7.29.0)(@types/react@19.1.17)(react@19.1.0)
+
   expo-server@1.0.6: {}
+
+  expo-sms@14.0.8(expo@54.0.34):
+    dependencies:
+      expo: 54.0.34(@babel/core@7.29.0)(@expo/metro-runtime@6.1.2)(expo-router@6.0.23)(react-native@0.81.5(@babel/core@7.29.0)(@types/react@19.1.17)(react@19.1.0))(react@19.1.0)(typescript@5.9.3)
 
   expo-splash-screen@31.0.13(expo@54.0.34)(typescript@5.9.3):
     dependencies:

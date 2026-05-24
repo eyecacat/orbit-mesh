@@ -66,6 +66,29 @@ router.get("/hayat-agi/network", authMiddleware, async (req: AuthRequest, res) =
   });
 });
 
+router.get("/hayat-agi/contacts", authMiddleware, async (req: AuthRequest, res) => {
+  const contacts = await db.select().from(contactsTable).where(eq(contactsTable.userId, req.userId!));
+  res.json(contacts);
+});
+
+router.post("/hayat-agi/contacts", authMiddleware, async (req: AuthRequest, res) => {
+  const { name, phone, relationship } = req.body as { name: string; phone: string; relationship: string };
+  const [contact] = await db.insert(contactsTable).values({
+    userId: req.userId!,
+    name,
+    phone,
+    relationship,
+  }).returning();
+  res.status(201).json(contact);
+});
+
+router.delete("/hayat-agi/contacts/:id", authMiddleware, async (req: AuthRequest, res) => {
+  await db.delete(contactsTable).where(
+    and(eq(contactsTable.id, parseInt(req.params.id!)), eq(contactsTable.userId, req.userId!))
+  );
+  res.json({ success: true });
+});
+
 router.get("/hayat-agi/history", authMiddleware, async (req: AuthRequest, res) => {
   const checkins = await db.select().from(checkinsTable)
     .where(eq(checkinsTable.userId, req.userId!))
@@ -121,8 +144,14 @@ router.get("/hayat-agi/groups", authMiddleware, async (req: AuthRequest, res) =>
   for (const groupId of allGroupIds) {
     const [group] = await db.select().from(groupsTable).where(eq(groupsTable.id, groupId));
     if (!group) continue;
-    const memberCount = await db.select().from(groupMembersTable).where(eq(groupMembersTable.groupId, groupId));
-    result.push({ ...group, memberCount: memberCount.length + 1 });
+    const members = await db.select().from(groupMembersTable).where(eq(groupMembersTable.groupId, groupId));
+    const admin = await db.select().from(usersTable).where(eq(usersTable.id, group.adminId)).then(r => r[0]);
+    result.push({
+      ...group,
+      memberCount: members.length + 1,
+      adminName: admin?.name ?? "Bilinmiyor",
+      isAdmin: group.adminId === req.userId,
+    });
   }
   res.json(result);
 });
@@ -134,7 +163,92 @@ router.post("/hayat-agi/groups", authMiddleware, async (req: AuthRequest, res) =
     adminId: req.userId!,
     checkInTime: checkInTime ?? "21:00",
   }).returning();
-  res.status(201).json({ ...group, memberCount: 1 });
+  const admin = await db.select().from(usersTable).where(eq(usersTable.id, req.userId!)).then(r => r[0]);
+  res.status(201).json({
+    ...group,
+    memberCount: 1,
+    adminName: admin?.name ?? "Bilinmiyor",
+    isAdmin: true,
+  });
+});
+
+router.get("/hayat-agi/groups/:groupId/members", authMiddleware, async (req: AuthRequest, res) => {
+  const groupId = parseInt(req.params.groupId!);
+  const group = await db.select().from(groupsTable).where(eq(groupsTable.id, groupId)).then(r => r[0]);
+  if (!group) return res.status(404).json({ message: "Grup bulunamadı" });
+
+  const members = await db.select().from(groupMembersTable).where(eq(groupMembersTable.groupId, groupId));
+  const result = await Promise.all(members.map(async m => {
+    const user = await db.select().from(usersTable).where(eq(usersTable.id, m.userId)).then(r => r[0]);
+    return {
+      id: m.id,
+      groupId: m.groupId,
+      userId: m.userId,
+      userName: user?.name ?? "Bilinmiyor",
+      userEmail: user?.email ?? "",
+      userCity: user?.city ?? null,
+      joinedAt: m.joinedAt.toISOString(),
+    };
+  }));
+
+  const admin = await db.select().from(usersTable).where(eq(usersTable.id, group.adminId)).then(r => r[0]);
+  const adminMember = {
+    id: 0,
+    groupId,
+    userId: group.adminId,
+    userName: (admin?.name ?? "Bilinmiyor") + " (Yönetici)",
+    userEmail: admin?.email ?? "",
+    userCity: admin?.city ?? null,
+    joinedAt: group.createdAt.toISOString(),
+  };
+
+  res.json([adminMember, ...result]);
+});
+
+router.post("/hayat-agi/groups/:groupId/members", authMiddleware, async (req: AuthRequest, res) => {
+  const groupId = parseInt(req.params.groupId!);
+  const { email } = req.body as { email: string };
+
+  const group = await db.select().from(groupsTable).where(eq(groupsTable.id, groupId)).then(r => r[0]);
+  if (!group) return res.status(404).json({ message: "Grup bulunamadı" });
+  if (group.adminId !== req.userId) return res.status(403).json({ message: "Sadece yönetici üye ekleyebilir" });
+
+  const targetUser = await db.select().from(usersTable).where(eq(usersTable.email, email)).then(r => r[0]);
+  if (!targetUser) return res.status(404).json({ message: "Bu email'e sahip kullanıcı bulunamadı" });
+
+  const existing = await db.select().from(groupMembersTable)
+    .where(and(eq(groupMembersTable.groupId, groupId), eq(groupMembersTable.userId, targetUser.id)))
+    .then(r => r[0]);
+  if (existing) return res.status(400).json({ message: "Kullanıcı zaten grupta" });
+
+  const [member] = await db.insert(groupMembersTable).values({
+    groupId,
+    userId: targetUser.id,
+  }).returning();
+
+  res.status(201).json({
+    id: member.id,
+    groupId: member.groupId,
+    userId: member.userId,
+    userName: targetUser.name,
+    userEmail: targetUser.email,
+    userCity: targetUser.city ?? null,
+    joinedAt: member.joinedAt.toISOString(),
+  });
+});
+
+router.delete("/hayat-agi/groups/:groupId/members/:userId", authMiddleware, async (req: AuthRequest, res) => {
+  const groupId = parseInt(req.params.groupId!);
+  const userId = parseInt(req.params.userId!);
+
+  const group = await db.select().from(groupsTable).where(eq(groupsTable.id, groupId)).then(r => r[0]);
+  if (!group) return res.status(404).json({ message: "Grup bulunamadı" });
+  if (group.adminId !== req.userId) return res.status(403).json({ message: "Sadece yönetici üye çıkarabilir" });
+
+  await db.delete(groupMembersTable).where(
+    and(eq(groupMembersTable.groupId, groupId), eq(groupMembersTable.userId, userId))
+  );
+  res.json({ success: true });
 });
 
 export default router;

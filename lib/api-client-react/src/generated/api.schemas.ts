@@ -119,8 +119,10 @@ export interface Group {
   id: number;
   name: string;
   adminId: number;
+  adminName: string;
   checkInTime: string;
   memberCount: number;
+  isAdmin: boolean;
   createdAt?: string;
 }
 
@@ -203,6 +205,20 @@ export interface Mission {
 
 export interface MissionCompletionRequest {
   notes: string;
+}
+
+export interface GroupMember {
+  id: number;
+  groupId: number;
+  userId: number;
+  userName: string;
+  userEmail: string;
+  userCity?: string | null;
+  joinedAt: string;
+}
+
+export interface InviteMemberRequest {
+  email: string;
 }
 
 export interface MagnetometerLog {

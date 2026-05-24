@@ -20,7 +20,7 @@ export default function RegisterScreen() {
     mutation: {
       onSuccess: async (data) => {
         await login(data.token, data.user);
-        router.replace("/(tabs)/");
+        router.replace("/(tabs)");
       },
       onError: (err: unknown) => {
         const msg = (err as { response?: { data?: { message?: string } } })?.response?.data?.message ?? "Kayıt sırasında hata oluştu";

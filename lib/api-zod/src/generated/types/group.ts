@@ -10,7 +10,9 @@ export interface Group {
   id: number;
   name: string;
   adminId: number;
+  adminName: string;
   checkInTime: string;
   memberCount: number;
+  isAdmin: boolean;
   createdAt?: string;
 }

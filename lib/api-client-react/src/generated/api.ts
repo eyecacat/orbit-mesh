@@ -29,8 +29,10 @@ import type {
   GetObservationsParams,
   GlobalNabiz,
   Group,
+  GroupMember,
   GroupRequest,
   HealthStatus,
+  InviteMemberRequest,
   LoginRequest,
   MagnetometerLog,
   MagnetometerLogRequest,
@@ -1086,6 +1088,227 @@ export const useCreateGroup = <TError = ErrorType<unknown>,
         TContext
       > => {
       return useMutation(getCreateGroupMutationOptions(options));
+    }
+
+export const getGetGroupMembersUrl = (groupId: number,) => {
+
+
+
+
+  return `/api/hayat-agi/groups/${groupId}/members`
+}
+
+/**
+ * @summary Get members of a group
+ */
+export const getGroupMembers = async (groupId: number, options?: RequestInit): Promise<GroupMember[]> => {
+
+  return customFetch<GroupMember[]>(getGetGroupMembersUrl(groupId),
+  {
+    ...options,
+    method: 'GET'
+
+
+  }
+);}
+
+
+
+
+
+export const getGetGroupMembersQueryKey = (groupId: number,) => {
+    return [
+    `/api/hayat-agi/groups/${groupId}/members`
+    ] as const;
+    }
+
+
+export const getGetGroupMembersQueryOptions = <TData = Awaited<ReturnType<typeof getGroupMembers>>, TError = ErrorType<unknown>>(groupId: number, options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof getGroupMembers>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+) => {
+
+const {query: queryOptions, request: requestOptions} = options ?? {};
+
+  const queryKey =  queryOptions?.queryKey ?? getGetGroupMembersQueryKey(groupId);
+
+
+
+    const queryFn: QueryFunction<Awaited<ReturnType<typeof getGroupMembers>>> = ({ signal }) => getGroupMembers(groupId, { signal, ...requestOptions });
+
+
+
+
+
+   return  { queryKey, queryFn, enabled: !!(groupId), ...queryOptions} as UseQueryOptions<Awaited<ReturnType<typeof getGroupMembers>>, TError, TData> & { queryKey: QueryKey }
+}
+
+export type GetGroupMembersQueryResult = NonNullable<Awaited<ReturnType<typeof getGroupMembers>>>
+export type GetGroupMembersQueryError = ErrorType<unknown>
+
+
+/**
+ * @summary Get members of a group
+ */
+
+export function useGetGroupMembers<TData = Awaited<ReturnType<typeof getGroupMembers>>, TError = ErrorType<unknown>>(
+ groupId: number, options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof getGroupMembers>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+
+ ):  UseQueryResult<TData, TError> & { queryKey: QueryKey } {
+
+  const queryOptions = getGetGroupMembersQueryOptions(groupId,options)
+
+  const query = useQuery(queryOptions) as  UseQueryResult<TData, TError> & { queryKey: QueryKey };
+
+  return { ...query, queryKey: queryOptions.queryKey };
+}
+
+
+
+
+
+
+
+export const getInviteGroupMemberUrl = (groupId: number,) => {
+
+
+
+
+  return `/api/hayat-agi/groups/${groupId}/members`
+}
+
+/**
+ * @summary Invite a user to group by email
+ */
+export const inviteGroupMember = async (groupId: number,
+    inviteMemberRequest: InviteMemberRequest, options?: RequestInit): Promise<GroupMember> => {
+
+  return customFetch<GroupMember>(getInviteGroupMemberUrl(groupId),
+  {
+    ...options,
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', ...options?.headers },
+    body: JSON.stringify(
+      inviteMemberRequest,)
+  }
+);}
+
+
+
+
+export const getInviteGroupMemberMutationOptions = <TError = ErrorType<ErrorResponse>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof inviteGroupMember>>, TError,{groupId: number;data: BodyType<InviteMemberRequest>}, TContext>, request?: SecondParameter<typeof customFetch>}
+): UseMutationOptions<Awaited<ReturnType<typeof inviteGroupMember>>, TError,{groupId: number;data: BodyType<InviteMemberRequest>}, TContext> => {
+
+const mutationKey = ['inviteGroupMember'];
+const {mutation: mutationOptions, request: requestOptions} = options ?
+      options.mutation && 'mutationKey' in options.mutation && options.mutation.mutationKey ?
+      options
+      : {...options, mutation: {...options.mutation, mutationKey}}
+      : {mutation: { mutationKey, }, request: undefined};
+
+
+
+
+      const mutationFn: MutationFunction<Awaited<ReturnType<typeof inviteGroupMember>>, {groupId: number;data: BodyType<InviteMemberRequest>}> = (props) => {
+          const {groupId,data} = props ?? {};
+
+          return  inviteGroupMember(groupId,data,requestOptions)
+        }
+
+
+
+
+
+
+  return  { mutationFn, ...mutationOptions }}
+
+    export type InviteGroupMemberMutationResult = NonNullable<Awaited<ReturnType<typeof inviteGroupMember>>>
+    export type InviteGroupMemberMutationBody = BodyType<InviteMemberRequest>
+    export type InviteGroupMemberMutationError = ErrorType<ErrorResponse>
+
+    /**
+ * @summary Invite a user to group by email
+ */
+export const useInviteGroupMember = <TError = ErrorType<ErrorResponse>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof inviteGroupMember>>, TError,{groupId: number;data: BodyType<InviteMemberRequest>}, TContext>, request?: SecondParameter<typeof customFetch>}
+ ): UseMutationResult<
+        Awaited<ReturnType<typeof inviteGroupMember>>,
+        TError,
+        {groupId: number;data: BodyType<InviteMemberRequest>},
+        TContext
+      > => {
+      return useMutation(getInviteGroupMemberMutationOptions(options));
+    }
+
+export const getRemoveGroupMemberUrl = (groupId: number,
+    userId: number,) => {
+
+
+
+
+  return `/api/hayat-agi/groups/${groupId}/members/${userId}`
+}
+
+/**
+ * @summary Remove a member from group
+ */
+export const removeGroupMember = async (groupId: number,
+    userId: number, options?: RequestInit): Promise<void> => {
+
+  return customFetch<void>(getRemoveGroupMemberUrl(groupId,userId),
+  {
+    ...options,
+    method: 'DELETE'
+
+
+  }
+);}
+
+
+
+
+export const getRemoveGroupMemberMutationOptions = <TError = ErrorType<unknown>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof removeGroupMember>>, TError,{groupId: number;userId: number}, TContext>, request?: SecondParameter<typeof customFetch>}
+): UseMutationOptions<Awaited<ReturnType<typeof removeGroupMember>>, TError,{groupId: number;userId: number}, TContext> => {
+
+const mutationKey = ['removeGroupMember'];
+const {mutation: mutationOptions, request: requestOptions} = options ?
+      options.mutation && 'mutationKey' in options.mutation && options.mutation.mutationKey ?
+      options
+      : {...options, mutation: {...options.mutation, mutationKey}}
+      : {mutation: { mutationKey, }, request: undefined};
+
+
+
+
+      const mutationFn: MutationFunction<Awaited<ReturnType<typeof removeGroupMember>>, {groupId: number;userId: number}> = (props) => {
+          const {groupId,userId} = props ?? {};
+
+          return  removeGroupMember(groupId,userId,requestOptions)
+        }
+
+
+
+
+
+
+  return  { mutationFn, ...mutationOptions }}
+
+    export type RemoveGroupMemberMutationResult = NonNullable<Awaited<ReturnType<typeof removeGroupMember>>>
+
+    export type RemoveGroupMemberMutationError = ErrorType<unknown>
+
+    /**
+ * @summary Remove a member from group
+ */
+export const useRemoveGroupMember = <TError = ErrorType<unknown>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof removeGroupMember>>, TError,{groupId: number;userId: number}, TContext>, request?: SecondParameter<typeof customFetch>}
+ ): UseMutationResult<
+        Awaited<ReturnType<typeof removeGroupMember>>,
+        TError,
+        {groupId: number;userId: number},
+        TContext
+      > => {
+      return useMutation(getRemoveGroupMemberMutationOptions(options));
     }
 
 export const getGetStreakUrl = () => {

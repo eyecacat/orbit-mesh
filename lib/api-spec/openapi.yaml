@@ -294,6 +294,82 @@ paths:
               schema:
                 $ref: "#/components/schemas/Group"
 
+  /hayat-agi/groups/{groupId}/members:
+    get:
+      operationId: getGroupMembers
+      tags: [hayatagi]
+      summary: Get members of a group
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: groupId
+          in: path
+          required: true
+          schema:
+            type: integer
+      responses:
+        "200":
+          description: List of group members
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/GroupMember"
+    post:
+      operationId: inviteGroupMember
+      tags: [hayatagi]
+      summary: Invite a user to group by email
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: groupId
+          in: path
+          required: true
+          schema:
+            type: integer
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/InviteMemberRequest"
+      responses:
+        "201":
+          description: Member invited
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/GroupMember"
+        "404":
+          description: User not found
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+
+  /hayat-agi/groups/{groupId}/members/{userId}:
+    delete:
+      operationId: removeGroupMember
+      tags: [hayatagi]
+      summary: Remove a member from group
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: groupId
+          in: path
+          required: true
+          schema:
+            type: integer
+        - name: userId
+          in: path
+          required: true
+          schema:
+            type: integer
+      responses:
+        "200":
+          description: Member removed
+
   /hayat-agi/streak:
     get:
       operationId: getStreak
@@ -784,18 +860,24 @@ components:
           type: string
         adminId:
           type: integer
+        adminName:
+          type: string
         checkInTime:
           type: string
         memberCount:
           type: integer
+        isAdmin:
+          type: boolean
         createdAt:
           type: string
       required:
         - id
         - name
         - adminId
+        - adminName
         - checkInTime
         - memberCount
+        - isAdmin
 
     GroupRequest:
       type: object
@@ -991,6 +1073,40 @@ components:
           type: string
       required:
         - notes
+
+    GroupMember:
+      type: object
+      properties:
+        id:
+          type: integer
+        groupId:
+          type: integer
+        userId:
+          type: integer
+        userName:
+          type: string
+        userEmail:
+          type: string
+        userCity:
+          type: string
+          nullable: true
+        joinedAt:
+          type: string
+      required:
+        - id
+        - groupId
+        - userId
+        - userName
+        - userEmail
+        - joinedAt
+
+    InviteMemberRequest:
+      type: object
+      properties:
+        email:
+          type: string
+      required:
+        - email
 
     MagnetometerLog:
       type: object
