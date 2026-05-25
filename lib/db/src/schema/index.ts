@@ -6,3 +6,5 @@ export * from "./observations";
 export * from "./nabiz";
 export * from "./missions";
 export * from "./magnetometer";
+export * from "./conversations";
+export * from "./messages";

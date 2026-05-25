@@ -52,6 +52,14 @@ function RootLayoutNav() {
         options={{ headerShown: false }}
       />
       <Stack.Screen
+        name="uzay-savasci"
+        options={{ headerShown: false }}
+      />
+      <Stack.Screen
+        name="ai-chat"
+        options={{ headerShown: false }}
+      />
+      <Stack.Screen
         name="emergency"
         options={{
           headerShown: false,

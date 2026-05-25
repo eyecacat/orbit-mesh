@@ -53,6 +53,8 @@ export default function DashboardScreen() {
     { icon: "cpu" as const, label: "BLE Deneyap", route: "/ble" as const, color: "#a855f7" },
     { icon: "play-circle" as const, label: "Galaksi Ustası", route: "/oyun" as const, color: "#f59e0b" },
     { icon: "zap" as const, label: "Manyetometre", route: "/magnetometer" as const, color: "#06b6d4" },
+    { icon: "target" as const, label: "Uzay Savaşçısı", route: "/uzay-savasci" as const, color: "#ff3b5c" },
+    { icon: "message-circle" as const, label: "AI Asistan", route: "/ai-chat" as const, color: "#00ff88" },
   ];
 
   return (

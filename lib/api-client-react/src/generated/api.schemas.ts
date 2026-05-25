@@ -238,6 +238,35 @@ export interface MagnetometerLogRequest {
   notes?: string;
 }
 
+export interface OpenrouterConversation {
+  id: number;
+  title: string;
+  createdAt: string;
+}
+
+export interface OpenrouterMessage {
+  id: number;
+  conversationId: number;
+  role: string;
+  content: string;
+  createdAt: string;
+}
+
+export interface OpenrouterConversationInput {
+  title: string;
+}
+
+export interface OpenrouterMessageInput {
+  content: string;
+}
+
+export interface OpenrouterConversationWithMessages {
+  id: number;
+  title: string;
+  createdAt: string;
+  messages: OpenrouterMessage[];
+}
+
 export type GetObservationsParams = {
 public?: boolean;
 userId?: number;

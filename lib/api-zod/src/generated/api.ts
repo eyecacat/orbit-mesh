@@ -452,3 +452,55 @@ export const CreateMagnetometerLogBody = zod.object({
 })
 
 
+/**
+ * @summary List all conversations
+ */
+export const GetOpenrouterConversationsResponseItem = zod.object({
+  "id": zod.number(),
+  "title": zod.string(),
+  "createdAt": zod.coerce.date()
+})
+export const GetOpenrouterConversationsResponse = zod.array(GetOpenrouterConversationsResponseItem)
+
+
+/**
+ * @summary Create a new conversation
+ */
+export const CreateOpenrouterConversationBody = zod.object({
+  "title": zod.string()
+})
+
+
+/**
+ * @summary Get conversation with messages
+ */
+export const GetOpenrouterConversationParams = zod.object({
+  "id": zod.coerce.number()
+})
+
+export const GetOpenrouterConversationResponse = zod.object({
+  "id": zod.number(),
+  "title": zod.string(),
+  "createdAt": zod.coerce.date(),
+  "messages": zod.array(zod.object({
+  "id": zod.number(),
+  "conversationId": zod.number(),
+  "role": zod.string(),
+  "content": zod.string(),
+  "createdAt": zod.coerce.date()
+}))
+})
+
+
+/**
+ * @summary Send a message and stream AI response (SSE)
+ */
+export const SendOpenrouterMessageParams = zod.object({
+  "id": zod.coerce.number()
+})
+
+export const SendOpenrouterMessageBody = zod.object({
+  "content": zod.string()
+})
+
+

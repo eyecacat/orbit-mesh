@@ -6,13 +6,15 @@ if (!process.env.AI_INTEGRATIONS_OPENROUTER_BASE_URL) {
   );
 }
 
-if (!process.env.AI_INTEGRATIONS_OPENROUTER_API_KEY) {
+const apiKey = process.env.OPENROUTER_API_KEY || process.env.AI_INTEGRATIONS_OPENROUTER_API_KEY;
+
+if (!apiKey) {
   throw new Error(
-    "AI_INTEGRATIONS_OPENROUTER_API_KEY must be set. Did you forget to provision the OpenRouter AI integration?",
+    "OPENROUTER_API_KEY must be set.",
   );
 }
 
 export const openrouter = new OpenAI({
   baseURL: process.env.AI_INTEGRATIONS_OPENROUTER_BASE_URL,
-  apiKey: process.env.AI_INTEGRATIONS_OPENROUTER_API_KEY,
+  apiKey,
 });
