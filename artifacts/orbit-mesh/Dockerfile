@@ -1,6 +1,6 @@
 FROM node:18-alpine
 
-RUN npm install -g pnpm
+RUN corepack enable && corepack prepare pnpm@latest --activate
 
 WORKDIR /app
 
