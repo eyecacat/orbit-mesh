@@ -4,3 +4,6 @@ buildCommand = "pnpm i --no-frozen-lockfile && pnpm --filter @workspace/api-serv
 
 [deploy]
 startCommand = "node artifacts/api-server/dist/index.mjs"
+
+[build.nixpacksPlan.phases.install]
+cmds = ["pnpm i --no-frozen-lockfile"]
