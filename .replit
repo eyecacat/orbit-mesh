@@ -34,3 +34,8 @@ externalPort = 3000
 [[ports]]
 localPort = 22382
 externalPort = 3002
+
+[userenv]
+
+[userenv.shared]
+AI_INTEGRATIONS_OPENROUTER_BASE_URL = "https://openrouter.ai/api/v1"
