@@ -2,10 +2,10 @@
 nixPkgs = ["nodejs_18", "nodePackages.pnpm"]
 
 [phases.install]
-cmds = ["pnpm i --no-frozen-lockfile"]
+cmds = ["cd /app && pnpm i --no-frozen-lockfile"]
 
 [phases.build]
-cmds = ["node scripts/build.js"]
+cmds = ["cd /app/artifacts/orbit-mesh && node scripts/build.js"]
 
 [start]
-cmd = "node server/serve.js"
+cmd = "cd /app/artifacts/orbit-mesh && node server/serve.js"
