@@ -1,0 +1,63 @@
+I want to add AI features to the ORBIT-MESH app using OpenRouter API.
+Model: openai/gpt-4o:free (free tier, no cost)
+Base URL: https://openrouter.ai/api/v1
+This is OpenAI-compatible API so use the same fetch structure.
+
+--- SETUP ---
+
+1. Add OPENROUTER_API_KEY to Replit Secrets (not in code).
+   In backend, access via: process.env.OPENROUTER_API_KEY
+
+2. Install nothing new — use native fetch.
+
+--- BACKEND: Add this helper function in server ---
+
+async function askAI(systemPrompt, userMessage) {
+  const response = await fetch("https://openrouter.ai/api/v1/chat/completions", {
+    method: "POST",
+    headers: {
+      "Authorization": `Bearer ${process.env.OPENROUTER_API_KEY}`,
+      "Content-Type": "application/json",
+      "HTTP-Referer": "https://orbit-mesh.app",
+      "X-Title": "ORBIT-MESH"
+    },
+    body: JSON.stringify({
+      model: "openai/gpt-4o:free",
+      messages: [
+        { role: "system", content: systemPrompt },
+        { role: "user", content: userMessage }
+      ],
+      max_tokens: 500
+    })
+  });
+  const data = await response.json();
+  return data.choices[0].message.content;
+}
+
+--- AI FEATURES TO ADD ---
+
+FEATURE 1: /api/ai/anomaly-explain (POST)
+Body: { readings: [{x, y, z, timestamp}], baseline: {x, y, z} }
+System prompt: "Sen bir jeomanyetik ve astronomi uzmanısın. 
+Kullanıcının manyetometre verilerini analiz et. 
+Anomali varsa nedenini açıkla: güneş fırtınası mı, 
+sismik aktivite mi, yoksa yerel gürültü mü? 
+Türkçe, kısa ve anlaşılır yanıt ver. Max 3 cümle."
+User message: "Baseline: ${baseline}. Son okumalar: ${readings}"
+Frontend: Show result below magnetometer chart as 
+"Yapay Zeka Analizi" card.
+
+FEATURE 2: /api/ai/sky-assistant (POST)  
+Body: { question: string, location: {city}, date: string }
+System prompt: "Sen ORBIT-MESH'in astronomi asistanısın. 
+Gözlem sorularını yanıtla. Konum ve tarihe göre 
+gözlemlenebilecek olayları, gezegenleri, 
+yıldız kümelerini anlat. Türkçe, 7. sınıf 
+öğrencisinin anlayacağı dilde yaz."
+Frontend: Add chat bubble UI on Astronomy page.
+Input: text field "Gökyüzü hakkında bir şey sor..."
+
+FEATURE 3: /api/ai/hayat-agi-insight (POST)
+Body: { networkData: {totalContacts, activeToday, 
+        streakDays, lastAlertDate} }
+System pr
