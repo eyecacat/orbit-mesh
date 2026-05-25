@@ -1,0 +1,11 @@
+[phases.setup]
+nixPkgs = ["nodejs_18", "nodePackages.pnpm"]
+
+[phases.install]
+cmds = ["pnpm i --no-frozen-lockfile"]
+
+[phases.build]
+cmds = ["pnpm --filter @workspace/api-server run build"]
+
+[start]
+cmd = "node artifacts/api-server/dist/index.mjs"
