@@ -1,5 +1,6 @@
 [build]
 builder = "nixpacks"
+buildCommand = "pnpm i --no-frozen-lockfile && pnpm run build"
 
 [deploy]
 startCommand = "node server/index.js"
