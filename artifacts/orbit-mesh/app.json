@@ -18,7 +18,15 @@
       "bundleIdentifier": "com.orbitmesh.app"
     },
     "android": {
-      "package": "com.orbitmesh.app"
+      "package": "com.orbitmesh.app",
+      "permissions": [
+        "android.permission.BLUETOOTH",
+        "android.permission.BLUETOOTH_ADMIN",
+        "android.permission.BLUETOOTH_CONNECT",
+        "android.permission.BLUETOOTH",
+        "android.permission.BLUETOOTH_ADMIN",
+        "android.permission.BLUETOOTH_CONNECT"
+      ]
     },
     "web": {
       "favicon": "./assets/images/favicon.png"
@@ -36,6 +44,18 @@
     "experiments": {
       "typedRoutes": true,
       "reactCompiler": true
+    },
+    "extra": {
+      "eas": {
+        "projectId": "3d5f0421-feaa-457f-a57f-417e7bb9f46a"
+      }
+    },
+    "owner": "orbit-mesh",
+    "runtimeVersion": {
+      "policy": "appVersion"
+    },
+    "updates": {
+      "url": "https://u.expo.dev/3d5f0421-feaa-457f-a57f-417e7bb9f46a"
     }
   }
 }

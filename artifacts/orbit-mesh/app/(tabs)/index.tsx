@@ -51,10 +51,13 @@ export default function DashboardScreen() {
     { icon: "activity" as const, label: "Nabız", route: "/(tabs)/nabiz" as const, color: "#00d4ff" },
     { icon: "star" as const, label: "Astronomi", route: "/(tabs)/astronomi" as const, color: "#ff9500" },
     { icon: "cpu" as const, label: "BLE Deneyap", route: "/ble" as const, color: "#a855f7" },
-    { icon: "play-circle" as const, label: "Galaksi Ustası", route: "/oyun" as const, color: "#f59e0b" },
     { icon: "zap" as const, label: "Manyetometre", route: "/magnetometer" as const, color: "#06b6d4" },
-    { icon: "target" as const, label: "Uzay Savaşçısı", route: "/uzay-savasci" as const, color: "#ff3b5c" },
     { icon: "message-circle" as const, label: "AI Asistan", route: "/ai-chat" as const, color: "#00ff88" },
+    { icon: "crosshair" as const, label: "AUET", route: "/(tabs)/auet" as const, color: "#ff3b5c" },
+    { icon: "radio" as const, label: "Seismik", route: "/(tabs)/seismic" as const, color: "#ff9500" },
+    { icon: "wifi" as const, label: "HELIOMesh", route: "/(tabs)/heliomesh" as const, color: "#00d4ff" },
+    { icon: "shield" as const, label: "EarthSign", route: "/(tabs)/earthsign" as const, color: "#a855f7" },
+    { icon: "map-pin" as const, label: "Ağ Haritası", route: "/(tabs)/network-map" as const, color: "#00ff88" },
   ];
 
   return (
