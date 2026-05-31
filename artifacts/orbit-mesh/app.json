@@ -26,7 +26,8 @@
         "android.permission.BLUETOOTH",
         "android.permission.BLUETOOTH_ADMIN",
         "android.permission.BLUETOOTH_CONNECT"
-      ]
+      ],
+      "jsEngine": "hermes"
     },
     "web": {
       "favicon": "./assets/images/favicon.png"
