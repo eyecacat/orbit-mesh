@@ -12,6 +12,8 @@ description: Key architectural decisions for the ORBIT-MESH Expo app (TEKNOFEST 
 - **API base URL in Expo**: `https://${EXPO_PUBLIC_DOMAIN}/api` — set from `REPLIT_DEV_DOMAIN` by workflow env vars.
 - **Tab routing**: Expo Router file-based. `app/(tabs)/` for 5 main tabs, detail screens at top level (`app/ble/index.tsx` etc.).
 - **AuthGate**: Lives inside `RootLayoutNav` using `useSegments` + `useRouter`, NOT wrapping the Stack. Redirects unauthenticated users to `/auth`.
+- **BLE**: `react-native-ble-plx` requires a **development build** (EAS), NOT Expo Go. `newArchEnabled` must be `false` because `react-native-ble-plx` is not stable on the new Fabric architecture. BLE permissions in `app.json` include `BLUETOOTH_SCAN`, `BLUETOOTH_CONNECT`, `BLUETOOTH`, `BLUETOOTH_ADMIN`, `ACCESS_FINE_LOCATION`.
+- **EAS**: `eas.json` exists with `developmentClient: true` + `distribution: "internal"` + `android.buildType: "apk"` for testing BLE on physical devices.
 - **EarthquakeOverlay**: Rendered in `RootLayoutNav` before `<Stack />` as a sibling, using a Modal — avoids navigation tree issues.
 
 **Why:** Keeping auth client-side avoids a backend DB dependency for the TEKNOFEST demo. Proxying AI through api-server hides the OpenRouter API key from the mobile client.
