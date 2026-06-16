@@ -1,0 +1,215 @@
+Build a production-grade, mobile-first, publishable platform named ORBIT-MESH.
+
+This is a real product, not a demo, not a mockup, not a simulation, and not a placeholder prototype.
+
+CORE MISSION
+Create a scalable, real, user-facing application that unifies:
+- HELIO / VLF astronomy observation
+- BLE-connected Deneyap Kart nodes
+- Mesh-based message and sensor relay
+- EarthSign authenticity layer
+- AUET acoustic/underground event tracking
+- HayatAğı family/safety network
+- Astronomy gamification
+- 50-question competitive astronomy quiz with global leaderboard
+- Real user auth and profiles
+- Real 3D UI/UX interactions
+
+PRIMARY REQUIREMENTS
+1) Real BLE integration
+- BLE must work with actual hardware.
+- Use a real BLE implementation, not simulated data.
+- If BLE is unavailable, show a blocked / disconnected state. Do not fake device data.
+- Support scanning, connecting, reconnecting, parsing JSON payloads, and live sensor streaming.
+
+2) Real authentication and user system
+- Email/password registration and login
+- JWT/session auth
+- User profiles
+- Saved devices/nodes
+- Family/group management
+- Emergency contacts
+- Activity history
+- Leaderboard profile
+
+3) Real backend
+- Persistent database
+- Real API endpoints
+- Sensor logs
+- Quiz results
+- Leaderboard rankings
+- Device registry
+- User groups
+- Notification records
+- Event history
+- Audit-friendly data model
+
+4) Real-time device + app integration
+- Connect to Deneyap Kart nodes over BLE
+- Parse live JSON payloads
+- Maintain device status, signal quality, timestamps, and anomaly flags
+- Store raw and processed telemetry
+- Support multiple nodes
+
+PRODUCT MODULES
+
+A. ORBIT-MESH CORE
+This is the main mesh platform.
+- BLE node discovery
+- Node pairing
+- Live telemetry dashboard
+- Message relay
+- Node health status
+- Offline-first design
+- Mesh-style propagation logic
+- Stored history and replay
+
+B. HELIO / VLF OBSERVATION
+- Real VLF signal ingestion from hardware nodes
+- Live signal graph
+- Band-energy visualization
+- Noise floor tracking
+- Peak frequency display
+- Event candidate tagging
+- No fake “Schumann detected” claims
+- Only measure and visualize what the hardware truly measures
+
+C. EARTHSIGN
+- Authenticity / provenance layer for media and events
+- A signed timestamp + sensor-context record attached to an event capture
+- Store metadata for verification
+- Do not claim impossible anti-deepfake magic
+- Present it as an evidence/provenance system using sensor context, timestamps, and device identity
+
+D. AUET
+Acoustic Underground Event Tracker
+- Event logging for acoustics / vibration / underground sound observations
+- If no real microphone hardware is connected, keep this as a software-ready module with real schema and UI, but no fake sensor readings
+- Event timeline, tags, notes, location, and correlation ready
+
+E. HAYATAĞI
+This is the biggest retention and daily-use feature.
+- Family / classroom / neighborhood groups
+- Check-in system
+- Daily “I am okay” flow
+- Status states: green / yellow / red
+- Time-based escalation
+- Local and group notification flow
+- Offline relay design
+- History streaks and safety timeline
+- This must be one of the most polished modules in the app
+
+F. ASTRONOMY GAME
+- Highly engaging astronomy mini-game
+- Beautiful 3D / animated UI
+- Real gameplay loops
+- Progression, score, streaks, badges
+- Must make users return daily
+- No cheap quiz-only feel
+
+G. 50-QUESTION ASTRONOMY CHALLENGE
+- A serious astronomy test with 50 questions
+- Timed mode
+- Randomized question sets
+- Public leaderboard
+- User ranking, accuracy, streak bonuses, and completion rate
+- Make it competitive and addictive
+- Questions should feel educational, scientific, and premium
+
+H. GLOBAL LEADERBOARD
+- Overall ranking
+- Quiz ranking
+- Activity ranking
+- Safety contribution ranking
+- Device contribution ranking
+- Region/class/group filters
+
+UX / UI REQUIREMENTS
+- Premium, polished, team-built look
+- Mobile-first
+- Beautiful 3D animations
+- Smooth transitions
+- Dark mode by default
+- Strong visual hierarchy
+- Cards, charts, timelines, status rings, and clean typography
+- No clutter
+- No rough prototype feel
+- It must look like a serious public product from a real product team
+
+TECH STACK PREFERENCE
+Use a modern production stack that can ship cleanly:
+- Next.js or equivalent modern frontend
+- TypeScript
+- Tailwind
+- Framer Motion
+- 3D UI support
+- Backend API with real persistence
+- PostgreSQL
+- Real-time updates where needed
+
+IMPORTANT IMPLEMENTATION RULES
+- Do not use mock data except for clearly isolated development seed data.
+- Do not ship any fake sensor stream.
+- Do not label simulations as real.
+- Do not build “demo mode” as the final experience.
+- Every module must be wired to a real data source, real DB schema, or explicit unavailable-state handling.
+- BLE must be real and production-oriented.
+- All major modules must be accessible through the same app shell.
+- The application must be maintainable, modular, and scalable.
+
+DATA MODEL
+Create schemas for:
+- users
+- sessions/auth
+- devices/nodes
+- telemetry
+- events
+- anomaly reports
+- family/safety groups
+- check-ins
+- notifications
+- quiz questions
+- quiz attempts
+- leaderboard entries
+- media provenance records
+- AUET logs
+
+APP SCREENS
+- Landing page
+- Sign up / login
+- Home dashboard
+- BLE devices page
+- Live node page
+- HELIO observation page
+- EarthSign page
+- AUET page
+- Hayatağı page
+- Astronomy game page
+- 50-question quiz page
+- Leaderboard page
+- Profile/settings page
+- Admin/debug pages only if necessary
+
+PRODUCT GOAL
+The result should feel like:
+- a real software product,
+- built by an experienced team,
+- ready for publication,
+- ready for real users,
+- ready for TEKNOFEST presentation,
+- and technically serious enough to support research-style evaluation.
+
+OUTPUT EXPECTATION
+Deliver:
+1) the full app
+2) clean architecture
+3) production-ready UI
+4) real BLE handling
+5) backend and database
+6) auth
+7) leaderboard
+8) gamification
+9) safety module
+10) polished 3D interface
+
+Build it step by step, but keep the final vision fully integrated and production-grade.
