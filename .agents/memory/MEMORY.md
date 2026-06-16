@@ -1,0 +1,2 @@
+- [ORBIT-MESH architecture](orbit-mesh-arch.md) — Expo mobile app for TEKNOFEST; auth is AsyncStorage-only, AI proxied through api-server, NASA DONKI called directly.
+- [Expo package versions](expo-package-versions.md) — expo-sensors and expo-sms must match Expo SDK expected versions to avoid Metro resolution failures.
