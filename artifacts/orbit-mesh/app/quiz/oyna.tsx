@@ -118,7 +118,7 @@ export default function QuizOynaScreen() {
             <Feather name="trending-up" size={18} color={colors.warning} />
             <Text style={[styles.leaderText, { color: colors.warning }]}>Liderlik Tablosu</Text>
           </Pressable>
-          <Pressable style={[styles.homeBtn]} onPress={() => router.replace("/quiz")}>
+          <Pressable style={[styles.homeBtn]} onPress={() => router.push("/quiz")}>
             <Text style={[styles.homeText, { color: colors.mutedForeground }]}>Quiz Menüsüne Dön</Text>
           </Pressable>
         </View>
@@ -132,7 +132,7 @@ export default function QuizOynaScreen() {
     <View style={[styles.root, { backgroundColor: colors.background }]}>
       {/* Header */}
       <View style={[styles.header, { paddingTop: topPad + 8 }]}>
-        <Pressable onPress={() => Alert.alert("Quiz'den Çık", "İlerleme kaydedilmeyecek.", [{ text: "İptal" }, { text: "Çık", onPress: () => router.back() }])} style={({ pressed }) => ({ opacity: pressed ? 0.6 : 1 })}>
+        <Pressable onPress={() => Alert.alert("Quiz'den Çık", "İlerleme kaydedilmeyecek.", [{ text: "İptal" }, { text: "Çık", onPress: () => router.push("/quiz") }])} style={({ pressed }) => ({ opacity: pressed ? 0.6 : 1 })}>
           <Feather name="x" size={24} color={colors.foreground} />
         </Pressable>
         <Text style={[styles.progress, { color: colors.mutedForeground }]}>{current + 1} / {questions.length}</Text>

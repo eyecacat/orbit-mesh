@@ -157,7 +157,10 @@ export default function OyunScreen() {
   return (
     <View style={[styles.root, { backgroundColor: "#010810" }]}>
       {/* HUD */}
-      <View style={[styles.hud, { paddingTop: topPad + 8 }]}>
+      <View style={[styles.hud, { paddingTop: topPad + 8, alignItems: "center" }]}>
+        <Pressable onPress={() => router.push("/")} style={({ pressed }) => ({ opacity: pressed ? 0.6 : 1 })}>
+          <Feather name="x" size={24} color={colors.foreground} />
+        </Pressable>
         <View style={[styles.hudBox, { borderColor: colors.warning + "66" }]}>
           <Feather name="star" size={14} color={colors.warning} />
           <Text style={[styles.hudText, { color: colors.warning }]}>{score}</Text>

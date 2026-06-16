@@ -26,7 +26,7 @@ router.post("/chat", async (req: Request, res: Response) => {
         "X-Title": "ORBIT-MESH",
       },
       body: JSON.stringify({
-        model: "anthropic/claude-3.5-sonnet",
+        model: "google/gemini-2.0-flash",
         messages: [
           {
             role: "system",
