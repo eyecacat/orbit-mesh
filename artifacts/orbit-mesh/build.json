@@ -1,0 +1,48 @@
+{
+  "id": "0d13d889-d679-4b3d-9530-f00250c97702",
+  "status": "ERRORED",
+  "platform": "ANDROID",
+  "error": {
+    "errorCode": "EAS_BUILD_UNKNOWN_GRADLE_ERROR",
+    "message": "Gradle build failed with unknown error. See logs for the \"Run gradlew\" phase for more information."
+  },
+  "artifacts": {},
+  "fingerprint": {
+    "id": "019ed1a7-a39d-7ff2-805d-28e6d89e8ba9",
+    "hash": "545ccc377dfac11917c94b6ef99c7f039f59da95"
+  },
+  "initiatingActor": {
+    "id": "86700871-e50d-4ff6-8455-2d54bbdb5220",
+    "displayName": "orbit-mesh"
+  },
+  "logFiles": [
+    "https://storage.googleapis.com/eas-workflows-production/logs/3d5f0421-feaa-457f-a57f-417e7bb9f46a/0d13d889-d679-4b3d-9530-f00250c97702/2026-06-16T19%3A34%3A49Z-3f1d9958-0931-447d-8805-25974c28de5c.txt?X-Goog-Algorithm=GOOG4-RSA-SHA256&X-Goog-Credential=www-production%40exponentjs.iam.gserviceaccount.com%2F20260616%2Fauto%2Fstorage%2Fgoog4_request&X-Goog-Date=20260616T195245Z&X-Goog-Expires=900&X-Goog-SignedHeaders=host&X-Goog-Signature=716afbb46da7ce4a5be023510f863096df1e82a060f24e579c102d736c88b786db10d69738671923604111bf4f5ec64a602e974d39ff11418a0196407c7439af029f41d096b47c07d23ba6bdc0d2ef01bb37d0c2d714a9f1794480045f41f47a94b8e5dbabbe257d4582824b41fa6837fa527f4fe9a7943af3e7ec70abee499b969f7920d02cbd407778e853988715c912b3a20011a2d63647b550ae513e6578a68f754084ed67f03dbca427dd6759a16e9cfc906c248d3edf6d115ba8c419b0fc4521a42177dd481032623e18063ae922a0105427a25513b682a6d70535334b11da9df4731078c9f379ccfdc48b030cecdd3ebb49110e67b07e539889b7604d"
+  ],
+  "project": {
+    "id": "3d5f0421-feaa-457f-a57f-417e7bb9f46a",
+    "name": "orbit-mesh",
+    "slug": "orbit-mesh",
+    "ownerAccount": {
+      "id": "4a7fd15d-d735-41cc-878f-675474fa2d54",
+      "name": "orbit-mesh"
+    }
+  },
+  "distribution": "STORE",
+  "buildProfile": "production",
+  "sdkVersion": "54.0.0",
+  "appVersion": "1.0.0",
+  "appBuildVersion": "1",
+  "gitCommitHash": "2cf33e0394f6dc6be042cd15f86643425d267181",
+  "gitCommitMessage": "Published your App\n\nReplit-Commit-Author: Deployment\nReplit-Commit-Session-Id: 566fcbc9-5c02-4771-b043-e67fa98139a5\nReplit-Commit-Checkpoint-Type: full_checkpoint\nReplit-Commit-Event-Id: 2c1e4779-54ca-40a9-9bb5-49f94dd2e7e9\nReplit-Commit-Screenshot-Url: https://storage.googleapis.com/screenshot-production-us-central1/6540c1f8-bc88-4322-9175-f9d2c154bb50/566fcbc9-5c02-4771-b043-e67fa98139a5/CT0s5OK\nReplit-Commit-Deployment-Build-Id: 62e9f176-bb8f-4193-8c6f-fe46f16e00d0\nReplit-Helium-Checkpoint-Created: true",
+  "priority": "NORMAL",
+  "createdAt": "2026-06-16T18:18:05.043Z",
+  "updatedAt": "2026-06-16T19:38:05.443Z",
+  "completedAt": "2026-06-16T19:38:05.288Z",
+  "expirationDate": "2026-07-16T18:18:05.077Z",
+  "isForIosSimulator": false,
+  "metrics": {
+    "buildWaitTime": 1473,
+    "buildQueueTime": 4607834,
+    "buildDuration": 190938
+  }
+}

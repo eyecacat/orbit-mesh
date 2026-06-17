@@ -1,0 +1,38 @@
+ORBIT-MESH projesindeki 3 kritik sorunu düzelt.
+
+Kural:
+- Hiçbir şey demo kalmasın.
+- Gerçek BLE, gerçek telemetri, gerçek bağlantı yönetimi.
+- Kodun tamamını incele, varsayım yapma.
+- Mevcut mimariyi bozmadan düzelt.
+
+1) BLE canlı telemetri parsing sorunu
+- BLE bağlantısı kuruluyor ve notification geliyor.
+- Ancak telemetri ekranda hep 0/0/0/0 görünüyor.
+- Anomali bazen algılanıyor ama sayısal değerler doğru gösterilmiyor.
+- Arduino IDE Serial Monitor’de gelen JSON payload ile mobil uygulamadaki parse/transform mantığını karşılaştır.
+- JSON decode, base64/utf8 dönüşümü, notification subscription ve state update akışını düzelt.
+- Gelen veriyi ekranda birebir gerçek değerlerle göster.
+- “00000” fallback davranışını kaldır; veri varsa gerçek değer göster, veri yoksa “bekleniyor” yaz.
+
+2) BLE bağlantısının sayfa değişince kopması
+- BLE ekranından çıkınca bağlantı kesiliyor veya cihaz görünmez oluyor.
+- BLE manager’ı global singleton yap.
+- Connection state, scan state, subscription, device ref ve telemetry stream ekran bağımsız kalmalı.
+- Sayfadan çıkınca bağlantıyı otomatik kapatma.
+- App background / foreground geçişinde bağlantıyı koru.
+- Tek cihaz bağlıysa uygulama genelinde “Bağlı” durumu kalıcı olsun.
+
+3) Donanım bekleniyor sorununu çöz
+- BLE bağlanmış olsa bile AUET, HELIO, EarthSign ve diğer modüller “donanım bekleniyor” diyor.
+- Tek bir cihaz bağlıysa bu cihazın sağladığı sensör/veri durumunu global state’e yaz.
+- Uygulama, BLE bağlıysa ilgili modüllerde “donanım bekleniyor” yerine gerçek veri akışını kullansın.
+- Eğer veri tipi eksikse, eksik alanı açıkça belirt; ama bağlı cihazı yok sayma.
+- Mesh/otomasyon mantığını uygulama katmanında merkezi bir device registry ile yönet.
+- Ble bağlantı durumu, nodeId, son veri zamanı, anomali flag’i ve sensör alanları tüm ekranlar tarafından okunabilir olsun.
+
+Ek istekler:
+- Kod temiz, production-ready ve modüler olsun.
+- BLE, telemetry parser, global device store ve ekranlar arası bağlantı katmanını ayır.
+- Sorunu çözdükten sonra hangi dosyalarda ne değiştiğini kısa ve net yaz.
+- Gerekirse test veya debug log ekle ama kullanıcı deneyimini bozma.

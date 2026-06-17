@@ -7,7 +7,7 @@
     "icon": "./assets/images/icon.png",
     "scheme": "orbit-mesh",
     "userInterfaceStyle": "dark",
-    "newArchEnabled": false,
+    "newArchEnabled": true,
     "splash": {
       "image": "./assets/images/icon.png",
       "resizeMode": "contain",
@@ -19,7 +19,8 @@
         "NSMotionUsageDescription": "Deprem tespiti için ivmeölçer kullanılıyor",
         "NSLocationWhenInUseUsageDescription": "Acil durum SMS'inde konum gönderebilmek için",
         "NSLocationAlwaysUsageDescription": "Acil durum durumunda konum paylaşımı için"
-      }
+      },
+      "bundleIdentifier": "com.orbitmesh.orbitmesh"
     },
     "android": {
       "permissions": [
@@ -29,8 +30,16 @@
         "android.permission.BLUETOOTH_SCAN",
         "android.permission.BLUETOOTH_CONNECT",
         "android.permission.BLUETOOTH",
+        "android.permission.BLUETOOTH_ADMIN",
+        "android.permission.ACTIVITY_RECOGNITION",
+        "android.permission.ACCESS_FINE_LOCATION",
+        "android.permission.SEND_SMS",
+        "android.permission.BLUETOOTH_SCAN",
+        "android.permission.BLUETOOTH_CONNECT",
+        "android.permission.BLUETOOTH",
         "android.permission.BLUETOOTH_ADMIN"
-      ]
+      ],
+      "package": "com.orbitmesh.orbitmesh"
     },
     "web": {
       "favicon": "./assets/images/icon.png"
@@ -48,6 +57,17 @@
     "experiments": {
       "typedRoutes": true,
       "reactCompiler": true
+    },
+    "extra": {
+      "eas": {
+        "projectId": "3d5f0421-feaa-457f-a57f-417e7bb9f46a"
+      }
+    },
+    "runtimeVersion": {
+      "policy": "appVersion"
+    },
+    "updates": {
+      "url": "https://u.expo.dev/3d5f0421-feaa-457f-a57f-417e7bb9f46a"
     }
   }
 }

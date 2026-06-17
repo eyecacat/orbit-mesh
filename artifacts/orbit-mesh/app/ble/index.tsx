@@ -1,9 +1,8 @@
 import { Feather } from "@expo/vector-icons";
 import { LinearGradient } from "expo-linear-gradient";
 import { router } from "expo-router";
-import React, { useCallback, useEffect, useRef, useState } from "react";
+import React, { useState } from "react";
 import {
-  ActivityIndicator,
   Alert,
   FlatList,
   Platform,
@@ -12,367 +11,79 @@ import {
   StyleSheet,
   Text,
   View,
+  ActivityIndicator,
 } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 
+import { useBle } from "@/context/BleContext";
 import { useColors } from "@/hooks/useColors";
 
 const SERVICE_UUID = "12345678-1234-1234-1234-123456789abc";
 const ORBIT_NAME_PREFIX = "ORBIT-MESH";
-const SCAN_TIMEOUT = 15000;
-
-interface BleDevice {
-  id: string;
-  name: string | null;
-  rssi: number | null;
-  isConnectable: boolean | null;
-  manufacturerData: string | null;
-  serviceUUIDs: string[] | null;
-  raw: unknown;
-}
-
-interface TelemetryPoint {
-  timestamp: number;
-  nodeId: string;
-  vlf_hz: number;
-  vlf_amplitude: number;
-  battery: number;
-  temp_c: number;
-  anomaly: boolean;
-}
-
-interface LogEntry {
-  id: string;
-  time: string;
-  type: "info" | "warn" | "error" | "scan";
-  message: string;
-}
-
-let BleManagerModule: typeof import("react-native-ble-plx").BleManager | null = null;
-function getBleManager() {
-  if (BleManagerModule) return BleManagerModule;
-  try {
-    const { BleManager } = require("react-native-ble-plx");
-    BleManagerModule = new BleManager();
-    return BleManagerModule;
-  } catch {
-    return null;
-  }
-}
-
-function isExpoGo(): boolean {
-  try {
-    const Constants = require("expo-constants").default;
-    return Constants.appOwnership === "expo";
-  } catch {
-    return false;
-  }
-}
 
 export default function BleScreen() {
   const colors = useColors();
   const insets = useSafeAreaInsets();
   const topPad = Platform.OS === "web" ? 67 : insets.top;
-
-  const [scanning, setScanning] = useState(false);
-  const [devices, setDevices] = useState<BleDevice[]>([]);
-  const [connectedDevice, setConnectedDevice] = useState<BleDevice | null>(null);
-  const [telemetry, setTelemetry] = useState<TelemetryPoint[]>([]);
-  const [logs, setLogs] = useState<LogEntry[]>([]);
-  const [permissionsOk, setPermissionsOk] = useState<boolean | null>(null);
   const [showDebug, setShowDebug] = useState(false);
-  const [bleAvailable, setBleAvailable] = useState<boolean | null>(null);
-  const scanTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
-  const discoveredIds = useRef<Set<string>>(new Set());
-  const managerRef = useRef<ReturnType<typeof getBleManager>>(null);
 
-  const addLog = useCallback((type: LogEntry["type"], message: string) => {
-    const time = new Date().toLocaleTimeString("tr-TR", { hour12: false, hour: "2-digit", minute: "2-digit", second: "2-digit" });
-    setLogs(prev => [{ id: Date.now().toString() + Math.random().toString(36).slice(2, 5), time, type, message }, ...prev].slice(0, 200));
-  }, []);
+  const {
+    isAvailable,
+    isExpoGoEnv,
+    permissionsGranted,
+    scanning,
+    devices,
+    connectedDevice,
+    telemetry,
+    latestTelemetry,
+    logs,
+    requestPermissions,
+    startScan,
+    stopScan,
+    connectToDevice,
+    disconnect,
+  } = useBle();
 
-  // Check BLE availability
-  useEffect(() => {
-    if (Platform.OS === "web") {
-      setBleAvailable(false);
-      addLog("warn", "Web ortamında BLE desteklenmiyor. Fiziksel cihazda test edin.");
+  const isWeb = Platform.OS === "web";
+  const isBlocked = isWeb || isExpoGoEnv || isAvailable === false || permissionsGranted === false;
+  const isReady = !isBlocked && isAvailable === true && permissionsGranted === true;
+
+  async function handleScan() {
+    if (isWeb || isExpoGoEnv) {
+      Alert.alert("BLE Yok", isWeb ? "Web ortamında BLE desteklenmiyor." : "Expo Go'da BLE çalışmaz. EAS Development Build gerekli.");
       return;
     }
-    const mgr = getBleManager();
-    if (!mgr) {
-      setBleAvailable(false);
-      addLog("error", "react-native-ble-plx modülü bulunamadı. Expo Go'da BLE native modülü çalışmaz.");
-      return;
+    if (permissionsGranted !== true) {
+      const ok = await requestPermissions();
+      if (!ok) return;
     }
-    managerRef.current = mgr;
-    mgr.state()
-      .then(state => {
-        const ok = state === "PoweredOn";
-        setBleAvailable(ok);
-        addLog("info", `Bluetooth durumu: ${state}`);
-        if (!ok) {
-          addLog("warn", "Bluetooth kapalı. Lütfen Bluetooth'u açın.");
-        }
-      })
-      .catch(err => {
-        setBleAvailable(false);
-        addLog("error", `BLE durum okuma hatası: ${err?.message ?? err}`);
-      });
-
-    const sub = mgr.onStateChange(state => {
-      const ok = state === "PoweredOn";
-      setBleAvailable(ok);
-      addLog("info", `Bluetooth durum değişti: ${state}`);
-    }, true);
-
-    return () => {
-      sub.remove();
-    };
-  }, [addLog]);
-
-  // Check permissions
-  useEffect(() => {
-    if (Platform.OS === "web") {
-      setPermissionsOk(false);
-      return;
-    }
-    if (Platform.OS === "ios") {
-      setPermissionsOk(true);
-      return;
-    }
-    (async () => {
-      try {
-        const { PermissionsAndroid } = require("react-native");
-        let allGranted = false;
-
-if (Platform.Version >= 31) {
-  const results = await PermissionsAndroid.requestMultiple([
-    PermissionsAndroid.PERMISSIONS.BLUETOOTH_SCAN,
-    PermissionsAndroid.PERMISSIONS.BLUETOOTH_CONNECT,
-    PermissionsAndroid.PERMISSIONS.ACCESS_FINE_LOCATION,
-  ]);
-
-  allGranted = Object.values(results).every(
-    r => r === PermissionsAndroid.RESULTS.GRANTED
-  );
-} else {
-  const result = await PermissionsAndroid.request(
-    PermissionsAndroid.PERMISSIONS.ACCESS_FINE_LOCATION
-  );
-
-  allGranted = result === PermissionsAndroid.RESULTS.GRANTED;
-}
-
-setPermissionsOk(allGranted);
-        if (allGranted) {
-          addLog("info", "Android BLE izinleri verildi: BLUETOOTH_SCAN, BLUETOOTH_CONNECT, ACCESS_FINE_LOCATION");
-        } else {
-          const denied = Object.entries(results)
-            .filter(([, v]) => v !== PermissionsAndroid.RESULTS.GRANTED)
-            .map(([k]) => k)
-            .join(", ");
-          addLog("error", `Android izinleri reddedildi: ${denied}`);
-        }
-      } catch (err) {
-        setPermissionsOk(false);
-        addLog("error", `İzin kontrolü hatası: ${err?.message ?? err}`);
-      }
-    })();
-  }, [addLog]);
-
-  function startScan() {
-    if (Platform.OS === "web") {
-      Alert.alert("BLE Yok", "Web ortamında BLE desteklenmiyor.");
-      return;
-    }
-    const mgr = managerRef.current;
-    if (!mgr) {
-      Alert.alert("BLE Modülü Yok", "react-native-ble-plx bulunamadı. Bu bir development build (EAS) ile çalışır.");
-      return;
-    }
-    if (isExpoGo()) {
-      Alert.alert("Expo Go Uyarısı", "BLE native modülleri Expo Go'da çalışmaz. EAS Development Build ile çalıştırın.");
-      return;
-    }
-
-    setScanning(true);
-    setDevices([]);
-    discoveredIds.current.clear();
-    addLog("info", "BLE taraması başlatıldı...");
-    addLog("info", `Filtre: name startsWith("${ORBIT_NAME_PREFIX}") || serviceUUIDs includes "${SERVICE_UUID}"`);
-
-    mgr.startDeviceScan(
-      [SERVICE_UUID],
-      { scanMode: 2, allowDuplicates: true },
-      (error, device) => {
-        if (error) {
-          addLog("error", `Tarama hatası: ${error.message} (code: ${error.errorCode})`);
-          setScanning(false);
-          return;
-        }
-        if (!device) return;
-
-        const name = device.name ?? device.localName ?? null;
-        const id = device.id;
-        const rssi = device.rssi ?? null;
-        const isConnectable = device.isConnectable ?? null;
-        const serviceUUIDs = device.serviceUUIDs ?? null;
-        const manufacturerData = device.manufacturerData ?? null;
-
-        const logMsg =
-          `Found Device:\n` +
-          `  name = ${name ?? "(null)"}\n` +
-          `  id = ${id}\n` +
-          `  rssi = ${rssi ?? "(null)"}\n` +
-          `  isConnectable = ${isConnectable ?? "(null)"}\n` +
-          `  serviceUUIDs = ${JSON.stringify(serviceUUIDs)}\n` +
-          `  manufacturerData = ${manufacturerData ?? "(null)"}`;
-        addLog("scan", logMsg);
-
-        // Filter: name must start with ORBIT-MESH, OR serviceUUID must match
-        const matchesName = name ? name.startsWith(ORBIT_NAME_PREFIX) : false;
-        const matchesService = serviceUUIDs ? serviceUUIDs.includes(SERVICE_UUID) : false;
-        if (!matchesName && !matchesService) {
-          addLog("scan", `  → FİLTRE: REDDETİLDİ (name ${matchesName ? "✓" : "✗"}, serviceUUID ${matchesService ? "✓" : "✗"})`);
-          return;
-        }
-        addLog("scan", `  → FİLTRE: KABUL EDİLDİ`);
-
-        if (!discoveredIds.current.has(id)) {
-          discoveredIds.current.add(id);
-          const newDevice: BleDevice = {
-            id,
-            name,
-            rssi,
-            isConnectable,
-            manufacturerData,
-            serviceUUIDs,
-            raw: device,
-          };
-          setDevices(prev => [...prev, newDevice].sort((a, b) => (b.rssi ?? -100) - (a.rssi ?? -100)));
-        } else {
-          // Update RSSI
-          setDevices(prev =>
-            prev.map(d => (d.id === id ? { ...d, rssi, isConnectable } : d)).sort((a, b) => (b.rssi ?? -100) - (a.rssi ?? -100))
-          );
-        }
-      }
-    );
-
-    scanTimerRef.current = setTimeout(() => {
-      mgr.stopDeviceScan();
-      setScanning(false);
-      addLog("info", "Tarama zaman aşımı (15s).");
-    }, SCAN_TIMEOUT);
+    if (scanning) stopScan();
+    else startScan();
   }
 
-  function stopScan() {
-    const mgr = managerRef.current;
-    if (mgr) mgr.stopDeviceScan();
-    if (scanTimerRef.current) clearTimeout(scanTimerRef.current);
-    setScanning(false);
-    addLog("info", "Tarama durduruldu.");
-  }
-
-  async function connectToDevice(device: BleDevice) {
-    const mgr = managerRef.current;
-    if (!mgr) return;
-    addLog("info", `Bağlanıyor: ${device.name ?? device.id}...`);
+  async function handleConnect(device: typeof devices[0]) {
     try {
-      const bleDevice = device.raw as import("react-native-ble-plx").Device;
-      const connected = await bleDevice.connect({ requestMTU: 512 });
-      addLog("info", `Bağlantı kuruldu: ${connected.id}`);
-      setConnectedDevice(device);
-
-      const discovered = await connected.discoverAllServicesAndCharacteristics();
-      addLog("info", `Servisler keşfedildi: ${discovered.id}`);
-
-      const services = await discovered.services();
-      for (const svc of services) {
-        addLog("info", `  Servis: ${svc.uuid}`);
-        const chars = await svc.characteristics();
-        for (const ch of chars) {
-          addLog("info", `    Karakteristik: ${ch.uuid} | readable=${ch.isReadable} | notifiable=${ch.isNotifiable} | writable=${ch.isWritableWithResponse}`);
-          if (ch.isNotifiable && svc.uuid.toLowerCase().includes(SERVICE_UUID.toLowerCase())) {
-            addLog("info", `    → Bildirim aboneliği başlatılıyor: ${ch.uuid}`);
-            ch.monitor((err, characteristic) => {
-              if (err) {
-                addLog("error", `Bildirim hatası: ${err.message}`);
-                return;
-              }
-              if (characteristic?.value) {
-                const decoded = decodeBase64(characteristic.value);
-                addLog("info", `Bildirim alındı: ${decoded}`);
-                try {
-                  const parsed = JSON.parse(decoded);
-                  const point: TelemetryPoint = {
-                    timestamp: parsed.timestamp ?? Date.now(),
-                    nodeId: parsed.nodeId ?? "unknown",
-                    vlf_hz: parsed.vlf_hz ?? 0,
-                    vlf_amplitude: parsed.vlf_amplitude ?? 0,
-                    battery: parsed.battery ?? 0,
-                    temp_c: parsed.temp_c ?? 0,
-                    anomaly: parsed.anomaly ?? false,
-                  };
-                  setTelemetry(prev => [point, ...prev].slice(0, 100));
-                } catch {
-                  addLog("warn", `JSON parse hatası: ${decoded}`);
-                }
-              }
-            });
-          }
-        }
-      }
+      await connectToDevice(device);
     } catch (err: any) {
-      addLog("error", `Bağlantı hatası: ${err?.message ?? err}`);
       Alert.alert("Bağlantı Hatası", err?.message ?? "Bilinmeyen hata");
     }
   }
 
-  function disconnect() {
-    const mgr = managerRef.current;
-    if (!mgr || !connectedDevice) return;
-    const bleDevice = connectedDevice.raw as import("react-native-ble-plx").Device;
-    bleDevice
-      .cancelConnection()
-      .then(() => {
-        addLog("info", "Bağlantı kesildi.");
-        setConnectedDevice(null);
-      })
-      .catch((err: any) => {
-        addLog("error", `Bağlantı kesme hatası: ${err?.message ?? err}`);
-      });
-  }
-
-  function decodeBase64(value: string): string {
-    try {
-      const chars = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/";
-      let output = "";
-      const str = value.replace(/[^A-Za-z0-9+/=]/g, "");
-      for (let i = 0; i < str.length; i += 4) {
-        const a = chars.indexOf(str.charAt(i));
-        const b = chars.indexOf(str.charAt(i + 1));
-        const c = chars.indexOf(str.charAt(i + 2));
-        const d = chars.indexOf(str.charAt(i + 3));
-        const e = (a << 2) | (b >> 4);
-        const f = ((b & 15) << 4) | (c >> 2);
-        const g = ((c & 3) << 6) | d;
-        if (e !== 0) output += String.fromCharCode(e);
-        if (c !== 64 && f !== 0) output += String.fromCharCode(f);
-        if (d !== 64 && g !== 0) output += String.fromCharCode(g);
-      }
-      return output;
-    } catch {
-      return value;
-    }
-  }
-
-  const isWeb = Platform.OS === "web";
-  const isReady = bleAvailable === true && permissionsOk === true;
-  const isBlocked = bleAvailable === false || permissionsOk === false || isWeb || isExpoGo();
+  const bannerConfig = isWeb
+    ? { icon: "alert-triangle" as const, color: colors.danger, title: "Web Ortamı — BLE Yok", desc: "Fiziksel cihazda (Android/iOS) test edin." }
+    : isExpoGoEnv
+    ? { icon: "alert-triangle" as const, color: colors.warning, title: "Expo Go — BLE Çalışmaz", desc: "EAS Development Build ile çalıştırın (eas build --profile development)." }
+    : isAvailable === false
+    ? { icon: "bluetooth" as const, color: colors.danger, title: "Bluetooth Kapalı", desc: "Cihazın Bluetooth'unu açın ve tekrar deneyin." }
+    : permissionsGranted === false
+    ? { icon: "lock" as const, color: colors.warning, title: "İzinler Eksik", desc: "Android BLE izinleri gerekiyor. 'Cihaz Tara' butonuna dokunun." }
+    : connectedDevice
+    ? { icon: "check-circle" as const, color: colors.accent, title: `Bağlı: ${connectedDevice.name ?? connectedDevice.id}`, desc: "BLE bağlantısı aktif — telemetri akışı başladı." }
+    : { icon: "bluetooth" as const, color: colors.primary, title: "BLE Hazır", desc: "Tarama başlatabilirsiniz." };
 
   return (
     <View style={[styles.root, { backgroundColor: colors.background }]}>
+      {/* Header */}
       <View style={[styles.header, { paddingTop: topPad + 8, borderBottomColor: colors.border }]}>
         <Pressable onPress={() => router.back()} style={({ pressed }) => ({ opacity: pressed ? 0.6 : 1 })}>
           <Feather name="arrow-left" size={24} color={colors.foreground} />
@@ -384,27 +95,13 @@ setPermissionsOk(allGranted);
       </View>
 
       <ScrollView contentContainerStyle={{ padding: 20, paddingBottom: 140 }} showsVerticalScrollIndicator={false}>
+
         {/* Status Banner */}
-        <View style={[styles.statusBanner, {
-          backgroundColor: isBlocked ? colors.danger + "22" : colors.accent + "22",
-          borderColor: isBlocked ? colors.danger + "66" : colors.accent + "66",
-        }]}>
-          <Feather name={isBlocked ? "alert-triangle" : "bluetooth"} size={20} color={isBlocked ? colors.danger : colors.accent} />
+        <View style={[styles.statusBanner, { backgroundColor: bannerConfig.color + "22", borderColor: bannerConfig.color + "66" }]}>
+          <Feather name={bannerConfig.icon} size={20} color={bannerConfig.color} />
           <View style={{ flex: 1, marginLeft: 12 }}>
-            <Text style={[styles.bannerTitle, { color: isBlocked ? colors.danger : colors.accent }]}>
-              {isWeb ? "Web Ortamı — BLE Yok" :
-               isExpoGo() ? "Expo Go — BLE Çalışmaz" :
-               bleAvailable === false ? "Bluetooth Kapalı" :
-               permissionsOk === false ? "İzinler Eksik" :
-               "BLE Hazır"}
-            </Text>
-            <Text style={[styles.bannerDesc, { color: colors.mutedForeground }]}>
-              {isWeb ? "Fiziksel cihazda (Android/iOS) test edin." :
-               isExpoGo() ? "EAS Development Build ile çalıştırın." :
-               bleAvailable === false ? "Bluetooth'u açın ve tekrar deneyin." :
-               permissionsOk === false ? "Android BLE izinlerini verin." :
-               "Tarama başlatabilirsiniz."}
-            </Text>
+            <Text style={[styles.bannerTitle, { color: bannerConfig.color }]}>{bannerConfig.title}</Text>
+            <Text style={[styles.bannerDesc, { color: colors.mutedForeground }]}>{bannerConfig.desc}</Text>
           </View>
         </View>
 
@@ -412,13 +109,9 @@ setPermissionsOk(allGranted);
         <Pressable
           style={({ pressed }) => [
             styles.scanBtn,
-            {
-              backgroundColor: scanning ? colors.muted : isBlocked ? colors.muted : colors.primary,
-              opacity: pressed ? 0.8 : 1,
-            },
+            { backgroundColor: isBlocked ? colors.muted : scanning ? colors.warning : colors.primary, opacity: pressed ? 0.8 : 1 },
           ]}
-          onPress={scanning ? stopScan : startScan}
-          disabled={isBlocked}
+          onPress={handleScan}
         >
           {scanning ? (
             <>
@@ -428,16 +121,19 @@ setPermissionsOk(allGranted);
           ) : (
             <>
               <Feather name="search" size={18} color={colors.background} />
-              <Text style={[styles.scanText, { color: colors.background }]}>Cihaz Tara</Text>
+              <Text style={[styles.scanText, { color: colors.background }]}>
+                {permissionsGranted !== true && !isWeb && !isExpoGoEnv ? "İzin Ver & Tara" : "Cihaz Tara"}
+              </Text>
             </>
           )}
         </Pressable>
 
-        {/* Connected Device */}
+        {/* Connected Device Card */}
         {connectedDevice && (
           <View style={[styles.connectedCard, { backgroundColor: colors.card, borderColor: colors.accent + "66" }]}>
             <LinearGradient colors={[colors.accent + "22", "transparent"]} style={StyleSheet.absoluteFill} />
             <View style={styles.connectedRow}>
+              <View style={[styles.connectedDot, { backgroundColor: colors.accent }]} />
               <Feather name="check-circle" size={20} color={colors.accent} />
               <View style={{ flex: 1, marginLeft: 10 }}>
                 <Text style={[styles.connectedName, { color: colors.foreground }]}>{connectedDevice.name ?? "Bilinmeyen Cihaz"}</Text>
@@ -450,6 +146,80 @@ setPermissionsOk(allGranted);
           </View>
         )}
 
+        {/* Live Telemetry — Latest Values */}
+        {latestTelemetry && (
+          <>
+            <Text style={[styles.sectionTitle, { color: colors.foreground }]}>Anlık Telemetri</Text>
+            <View style={[styles.liveCard, { backgroundColor: colors.card, borderColor: colors.accent + "44" }]}>
+              <LinearGradient colors={[colors.accent + "11", "transparent"]} style={StyleSheet.absoluteFill} />
+              <View style={styles.liveGrid}>
+                <View style={styles.liveCell}>
+                  <Text style={[styles.liveCellLabel, { color: colors.mutedForeground }]}>VLF Frekans</Text>
+                  <Text style={[styles.liveCellValue, { color: colors.primary }]}>
+                    {latestTelemetry.vlf_hz > 0 ? `${latestTelemetry.vlf_hz.toFixed(2)} Hz` : "bekleniyor"}
+                  </Text>
+                </View>
+                <View style={styles.liveCell}>
+                  <Text style={[styles.liveCellLabel, { color: colors.mutedForeground }]}>Amplitüd</Text>
+                  <Text style={[styles.liveCellValue, { color: colors.primary }]}>
+                    {latestTelemetry.vlf_amplitude > 0 ? latestTelemetry.vlf_amplitude.toFixed(3) : "bekleniyor"}
+                  </Text>
+                </View>
+                <View style={styles.liveCell}>
+                  <Text style={[styles.liveCellLabel, { color: colors.mutedForeground }]}>Batarya</Text>
+                  <Text style={[styles.liveCellValue, { color: latestTelemetry.battery > 20 ? colors.accent : colors.danger }]}>
+                    {latestTelemetry.battery > 0 ? `%${latestTelemetry.battery}` : "bekleniyor"}
+                  </Text>
+                </View>
+                <View style={styles.liveCell}>
+                  <Text style={[styles.liveCellLabel, { color: colors.mutedForeground }]}>Sıcaklık</Text>
+                  <Text style={[styles.liveCellValue, { color: colors.foreground }]}>
+                    {latestTelemetry.temp_c !== 0 ? `${latestTelemetry.temp_c.toFixed(1)}°C` : "bekleniyor"}
+                  </Text>
+                </View>
+              </View>
+              {latestTelemetry.nodeId !== "unknown" && (
+                <Text style={[styles.nodeIdText, { color: colors.mutedForeground }]}>
+                  Node: {latestTelemetry.nodeId} · {new Date(latestTelemetry.receivedAt).toLocaleTimeString("tr-TR")}
+                </Text>
+              )}
+              {latestTelemetry.anomaly && (
+                <View style={[styles.anomalyBadge, { backgroundColor: colors.danger + "22", borderColor: colors.danger + "66" }]}>
+                  <Feather name="alert-triangle" size={14} color={colors.danger} />
+                  <Text style={[styles.anomalyText, { color: colors.danger }]}>ANOMALİ ALGILANDI</Text>
+                </View>
+              )}
+            </View>
+          </>
+        )}
+
+        {/* Telemetry History */}
+        {telemetry.length > 1 && (
+          <>
+            <Text style={[styles.sectionTitle, { color: colors.foreground }]}>Geçmiş ({telemetry.length})</Text>
+            <View style={[styles.historyCard, { backgroundColor: colors.card, borderColor: colors.border }]}>
+              <FlatList
+                data={telemetry.slice(0, 12)}
+                keyExtractor={t => `${t.receivedAt}-${t.nodeId}`}
+                scrollEnabled={false}
+                showsVerticalScrollIndicator={false}
+                renderItem={({ item, index }) => (
+                  <View style={[styles.historyRow, { borderTopColor: colors.border, borderTopWidth: index === 0 ? 0 : 1 }]}>
+                    <Text style={[styles.historyTime, { color: colors.mutedForeground }]}>
+                      {new Date(item.receivedAt).toLocaleTimeString("tr-TR", { hour12: false })}
+                    </Text>
+                    <Text style={[styles.historyVal, { color: colors.primary }]}>{item.vlf_hz.toFixed(2)} Hz</Text>
+                    <Text style={[styles.historyVal, { color: colors.foreground }]}>{item.vlf_amplitude.toFixed(3)}</Text>
+                    <Text style={[styles.historyVal, { color: item.battery > 20 ? colors.accent : colors.danger }]}>%{item.battery}</Text>
+                    <Text style={[styles.historyVal, { color: colors.foreground }]}>{item.temp_c.toFixed(1)}°C</Text>
+                    {item.anomaly && <Feather name="alert-triangle" size={12} color={colors.danger} />}
+                  </View>
+                )}
+              />
+            </View>
+          </>
+        )}
+
         {/* Device List */}
         {devices.length > 0 && (
           <>
@@ -457,27 +227,27 @@ setPermissionsOk(allGranted);
             {devices.map(device => {
               const signal = device.rssi ?? -100;
               const signalColor = signal > -60 ? colors.accent : signal > -80 ? colors.warning : colors.danger;
+              const isConnected = connectedDevice?.id === device.id;
               return (
                 <Pressable
                   key={device.id}
                   style={({ pressed }) => [
                     styles.deviceCard,
-                    { backgroundColor: colors.card, borderColor: colors.border, opacity: pressed ? 0.7 : 1 },
+                    {
+                      backgroundColor: colors.card,
+                      borderColor: isConnected ? colors.accent + "66" : colors.border,
+                      opacity: pressed ? 0.7 : 1,
+                    },
                   ]}
-                  onPress={() => connectToDevice(device)}
+                  onPress={() => isConnected ? disconnect() : handleConnect(device)}
                 >
                   <View style={styles.deviceRow}>
-                    <View style={[styles.deviceIcon, { backgroundColor: colors.primary + "22" }]}>
-                      <Feather name="bluetooth" size={18} color={colors.primary} />
+                    <View style={[styles.deviceIcon, { backgroundColor: isConnected ? colors.accent + "22" : colors.primary + "22" }]}>
+                      <Feather name="bluetooth" size={18} color={isConnected ? colors.accent : colors.primary} />
                     </View>
                     <View style={{ flex: 1 }}>
-                      <Text style={[styles.deviceName, { color: colors.foreground }]}>
-                        {device.name ?? "(İsimsiz)"}
-                      </Text>
+                      <Text style={[styles.deviceName, { color: colors.foreground }]}>{device.name ?? "(İsimsiz)"}</Text>
                       <Text style={[styles.deviceId, { color: colors.mutedForeground }]}>{device.id}</Text>
-                      <Text style={[styles.deviceUuids, { color: colors.mutedForeground }]}>
-                        {device.serviceUUIDs?.join(", ") ?? "Servis yok"}
-                      </Text>
                     </View>
                     <View style={styles.rssiCol}>
                       <Text style={[styles.rssiValue, { color: signalColor }]}>{device.rssi ?? "?"} dBm</Text>
@@ -485,51 +255,11 @@ setPermissionsOk(allGranted);
                         <View style={[styles.rssiFill, { backgroundColor: signalColor, width: `${Math.max(0, Math.min(100, (signal + 100) / 60 * 100))}%` }]} />
                       </View>
                     </View>
-                    <Feather name="chevron-right" size={18} color={colors.mutedForeground} />
+                    <Feather name={isConnected ? "x-circle" : "chevron-right"} size={18} color={isConnected ? colors.danger : colors.mutedForeground} />
                   </View>
                 </Pressable>
               );
             })}
-          </>
-        )}
-
-        {/* Telemetry Stream */}
-        {telemetry.length > 0 && (
-          <>
-            <Text style={[styles.sectionTitle, { color: colors.foreground }]}>Canlı Telemetri</Text>
-            <View style={[styles.telemetryCard, { backgroundColor: colors.card, borderColor: colors.border }]}>
-              <FlatList
-                data={telemetry.slice(0, 10)}
-                keyExtractor={t => t.timestamp.toString()}
-                renderItem={({ item }) => (
-                  <View style={[styles.telemetryRow, { borderColor: colors.border }]}>
-                    <View style={styles.telemetryCol}>
-                      <Text style={[styles.telemetryLabel, { color: colors.mutedForeground }]}>VLF</Text>
-                      <Text style={[styles.telemetryValue, { color: colors.primary }]}>{item.vlf_hz.toFixed(2)} Hz</Text>
-                    </View>
-                    <View style={styles.telemetryCol}>
-                      <Text style={[styles.telemetryLabel, { color: colors.mutedForeground }]}>Amplitüd</Text>
-                      <Text style={[styles.telemetryValue, { color: colors.primary }]}>{item.vlf_amplitude.toFixed(3)}</Text>
-                    </View>
-                    <View style={styles.telemetryCol}>
-                      <Text style={[styles.telemetryLabel, { color: colors.mutedForeground }]}>Batarya</Text>
-                      <Text style={[styles.telemetryValue, { color: item.battery > 20 ? colors.accent : colors.danger }]}>%{item.battery}</Text>
-                    </View>
-                    <View style={styles.telemetryCol}>
-                      <Text style={[styles.telemetryLabel, { color: colors.mutedForeground }]}>Sıcaklık</Text>
-                      <Text style={[styles.telemetryValue, { color: colors.foreground }]}>{item.temp_c}°C</Text>
-                    </View>
-                    {item.anomaly && (
-                      <View style={[styles.anomalyBadge, { backgroundColor: colors.danger + "22" }]}>
-                        <Text style={[styles.anomalyText, { color: colors.danger }]}>ANOMALİ</Text>
-                      </View>
-                    )}
-                  </View>
-                )}
-                showsVerticalScrollIndicator={false}
-                scrollEnabled={false}
-              />
-            </View>
           </>
         )}
 
@@ -539,62 +269,40 @@ setPermissionsOk(allGranted);
             <Feather name="bluetooth" size={40} color={colors.mutedForeground} />
             <Text style={[styles.emptyTitle, { color: colors.foreground }]}>Henüz cihaz bulunmadı</Text>
             <Text style={[styles.emptyDesc, { color: colors.mutedForeground }]}>
-              Deneyap Kart ORBIT-MESH firmware ile BLE modunda başlatıldığını doğrulayın.
-            </Text>
-            <Text style={[styles.emptyUuid, { color: colors.mutedForeground }]}>
-              Beklenen: name="{ORBIT_NAME_PREFIX}-*", serviceUUID="{SERVICE_UUID}"
+              Deneyap Kart ORBIT-MESH firmware ile başlatılmış olmalı.
             </Text>
           </View>
         )}
 
-        {/* Firmware Info */}
-        <Text style={[styles.sectionTitle, { color: colors.foreground }]}>Beklenen Cihaz Bilgisi</Text>
+        {/* Firmware reference */}
+        <Text style={[styles.sectionTitle, { color: colors.foreground }]}>Beklenen Cihaz / JSON Formatı</Text>
         <View style={[styles.codeBox, { backgroundColor: colors.muted, borderColor: colors.border }]}>
-          <Text style={[styles.code, { color: colors.accent }]}>
-            {`Device Name:  ORBIT-MESH-NODE1
-Service UUID: ${SERVICE_UUID}
-Expected JSON:
-{
-  "nodeId": "DYK-001",
-  "timestamp": 1700000000,
-  "vlf_hz": 7.83,
-  "vlf_amplitude": 0.42,
-  "battery": 87,
-  "temp_c": 23.5,
-  "anomaly": false
-}`}
-          </Text>
+          <Text style={[styles.code, { color: colors.accent }]}>{`Cihaz Adı: ${ORBIT_NAME_PREFIX}-NODE1\nService: ${SERVICE_UUID}\n\n{\n  "nodeId": "DYK-001",\n  "timestamp": 1700000000,\n  "vlf_hz": 7.83,\n  "vlf_amplitude": 0.42,\n  "battery": 87,\n  "temp_c": 23.5,\n  "anomaly": false\n}`}</Text>
         </View>
       </ScrollView>
 
-      {/* Debug Logs Panel */}
+      {/* Debug Log Panel */}
       {showDebug && (
-        <View style={[styles.debugPanel, { backgroundColor: colors.background, borderColor: colors.border }]}>
-          <View style={[styles.debugHeader, { borderBottomColor: colors.border }]}>
-            <Text style={[styles.debugTitle, { color: colors.foreground }]}>BLE Debug Logları</Text>
-            <Pressable onPress={() => setLogs([])}>
-              <Text style={[styles.debugClear, { color: colors.primary }]}>Temizle</Text>
+        <View style={[styles.debugPanel, { backgroundColor: "#020810", borderTopColor: colors.border }]}>
+          <View style={styles.debugHeader}>
+            <Text style={[styles.debugTitle, { color: colors.accent }]}>Debug Log ({logs.length})</Text>
+            <Pressable onPress={() => setShowDebug(false)}>
+              <Feather name="x" size={16} color={colors.mutedForeground} />
             </Pressable>
           </View>
           <FlatList
-            data={logs}
+            data={logs.slice(0, 80)}
             keyExtractor={l => l.id}
+            style={{ maxHeight: 220 }}
+            showsVerticalScrollIndicator={false}
             renderItem={({ item }) => {
-              const color = item.type === "error" ? colors.danger : item.type === "warn" ? colors.warning : item.type === "scan" ? colors.accent : colors.mutedForeground;
+              const logColor = item.level === "error" ? colors.danger : item.level === "warn" ? colors.warning : item.level === "scan" ? colors.secondary : "#6ee7b7";
               return (
-                <View style={styles.logRow}>
-                  <Text style={[styles.logTime, { color: colors.mutedForeground }]}>{item.time}</Text>
-                  <Text style={[styles.logType, { color }]}>[{item.type.toUpperCase()}]</Text>
-                  <Text style={[styles.logMessage, { color: colors.foreground }]}>{item.message}</Text>
-                </View>
+                <Text style={[styles.logLine, { color: logColor }]} numberOfLines={3}>
+                  {item.time} {item.message}
+                </Text>
               );
             }}
-            contentContainerStyle={{ padding: 12 }}
-            inverted
-            showsVerticalScrollIndicator={false}
-            ListEmptyComponent={
-              <Text style={[styles.emptyLog, { color: colors.mutedForeground }]}>Henüz log yok. Tara butonuna basın.</Text>
-            }
           />
         </View>
       )}
@@ -606,46 +314,45 @@ const styles = StyleSheet.create({
   root: { flex: 1 },
   header: { flexDirection: "row", alignItems: "center", justifyContent: "space-between", padding: 16, paddingBottom: 12, borderBottomWidth: 1 },
   headerTitle: { fontSize: 18, fontFamily: "Inter_700Bold" },
-  statusBanner: { flexDirection: "row", alignItems: "center", borderRadius: 14, borderWidth: 1, padding: 16, marginBottom: 16 },
-  bannerTitle: { fontSize: 15, fontFamily: "Inter_700Bold" },
-  bannerDesc: { fontSize: 12, fontFamily: "Inter_400Regular", marginTop: 2 },
-  scanBtn: { flexDirection: "row", alignItems: "center", gap: 10, justifyContent: "center", paddingVertical: 14, borderRadius: 14, marginBottom: 16 },
-  scanText: { fontSize: 16, fontFamily: "Inter_600SemiBold" },
-  connectedCard: { borderRadius: 14, borderWidth: 1, padding: 14, marginBottom: 16, overflow: "hidden" },
+  statusBanner: { flexDirection: "row", alignItems: "center", borderRadius: 16, borderWidth: 1, padding: 16, marginBottom: 16 },
+  bannerTitle: { fontSize: 14, fontFamily: "Inter_700Bold", marginBottom: 2 },
+  bannerDesc: { fontSize: 12, fontFamily: "Inter_400Regular" },
+  scanBtn: { flexDirection: "row", alignItems: "center", justifyContent: "center", gap: 10, borderRadius: 16, paddingVertical: 14, marginBottom: 20 },
+  scanText: { fontSize: 15, fontFamily: "Inter_700Bold" },
+  connectedCard: { borderRadius: 16, borderWidth: 1, padding: 16, marginBottom: 20, overflow: "hidden" },
   connectedRow: { flexDirection: "row", alignItems: "center" },
+  connectedDot: { width: 8, height: 8, borderRadius: 4, marginRight: 8 },
   connectedName: { fontSize: 15, fontFamily: "Inter_600SemiBold" },
-  connectedId: { fontSize: 12, fontFamily: "Inter_400Regular" },
-  sectionTitle: { fontSize: 16, fontFamily: "Inter_700Bold", marginBottom: 12, marginTop: 8 },
+  connectedId: { fontSize: 11, fontFamily: "Inter_400Regular", marginTop: 2 },
+  sectionTitle: { fontSize: 16, fontFamily: "Inter_700Bold", marginBottom: 10, marginTop: 4 },
+  liveCard: { borderRadius: 16, borderWidth: 1, padding: 16, marginBottom: 20, overflow: "hidden", gap: 12 },
+  liveGrid: { flexDirection: "row", flexWrap: "wrap", gap: 12 },
+  liveCell: { width: "45%", gap: 4 },
+  liveCellLabel: { fontSize: 11, fontFamily: "Inter_500Medium" },
+  liveCellValue: { fontSize: 20, fontFamily: "Inter_700Bold" },
+  nodeIdText: { fontSize: 11, fontFamily: "Inter_400Regular" },
+  anomalyBadge: { flexDirection: "row", alignItems: "center", gap: 6, borderRadius: 10, borderWidth: 1, padding: 10 },
+  anomalyText: { fontSize: 13, fontFamily: "Inter_700Bold" },
+  historyCard: { borderRadius: 16, borderWidth: 1, marginBottom: 20, overflow: "hidden" },
+  historyRow: { flexDirection: "row", alignItems: "center", paddingHorizontal: 14, paddingVertical: 8, gap: 10 },
+  historyTime: { fontSize: 10, fontFamily: "Inter_400Regular", width: 60 },
+  historyVal: { fontSize: 12, fontFamily: "Inter_500Medium", flex: 1 },
   deviceCard: { borderRadius: 14, borderWidth: 1, padding: 14, marginBottom: 10 },
   deviceRow: { flexDirection: "row", alignItems: "center", gap: 12 },
-  deviceIcon: { width: 40, height: 40, borderRadius: 12, alignItems: "center", justifyContent: "center" },
-  deviceName: { fontSize: 15, fontFamily: "Inter_600SemiBold" },
-  deviceId: { fontSize: 11, fontFamily: "Inter_400Regular" },
-  deviceUuids: { fontSize: 10, fontFamily: "Inter_400Regular", marginTop: 2 },
-  rssiCol: { alignItems: "flex-end", marginRight: 8 },
-  rssiValue: { fontSize: 13, fontFamily: "Inter_700Bold" },
-  rssiBar: { width: 40, height: 4, borderRadius: 2, marginTop: 4, overflow: "hidden" },
+  deviceIcon: { width: 38, height: 38, borderRadius: 10, alignItems: "center", justifyContent: "center" },
+  deviceName: { fontSize: 14, fontFamily: "Inter_600SemiBold" },
+  deviceId: { fontSize: 10, fontFamily: "Inter_400Regular", marginTop: 2 },
+  rssiCol: { alignItems: "flex-end", gap: 4 },
+  rssiValue: { fontSize: 11, fontFamily: "Inter_500Medium" },
+  rssiBar: { width: 48, height: 4, borderRadius: 2, overflow: "hidden" },
   rssiFill: { height: 4, borderRadius: 2 },
-  telemetryCard: { borderRadius: 14, borderWidth: 1, padding: 12, marginBottom: 16 },
-  telemetryRow: { flexDirection: "row", alignItems: "center", gap: 10, paddingVertical: 8, borderBottomWidth: 1 },
-  telemetryCol: { alignItems: "center" },
-  telemetryLabel: { fontSize: 9, fontFamily: "Inter_400Regular" },
-  telemetryValue: { fontSize: 13, fontFamily: "Inter_700Bold" },
-  anomalyBadge: { paddingHorizontal: 6, paddingVertical: 2, borderRadius: 4 },
-  anomalyText: { fontSize: 9, fontFamily: "Inter_700Bold" },
-  emptyCard: { borderRadius: 16, borderWidth: 1, padding: 24, alignItems: "center", gap: 10, marginBottom: 16 },
+  emptyCard: { borderRadius: 16, borderWidth: 1, padding: 32, alignItems: "center", gap: 12, marginBottom: 16 },
   emptyTitle: { fontSize: 16, fontFamily: "Inter_700Bold" },
   emptyDesc: { fontSize: 13, fontFamily: "Inter_400Regular", textAlign: "center" },
-  emptyUuid: { fontSize: 11, fontFamily: "Inter_400Regular", textAlign: "center", marginTop: 4 },
-  codeBox: { borderRadius: 12, borderWidth: 1, padding: 16, marginBottom: 16 },
-  code: { fontSize: 12, fontFamily: "Inter_400Regular", lineHeight: 20 },
-  debugPanel: { position: "absolute", bottom: 0, left: 0, right: 0, height: 320, borderTopWidth: 1 },
-  debugHeader: { flexDirection: "row", justifyContent: "space-between", alignItems: "center", padding: 12, borderBottomWidth: 1 },
-  debugTitle: { fontSize: 14, fontFamily: "Inter_700Bold" },
-  debugClear: { fontSize: 13, fontFamily: "Inter_600SemiBold" },
-  logRow: { marginBottom: 6 },
-  logTime: { fontSize: 10, fontFamily: "Inter_400Regular" },
-  logType: { fontSize: 10, fontFamily: "Inter_700Bold" },
-  logMessage: { fontSize: 11, fontFamily: "Inter_400Regular", lineHeight: 16 },
-  emptyLog: { textAlign: "center", padding: 20, fontSize: 13, fontFamily: "Inter_400Regular" },
+  codeBox: { borderRadius: 12, borderWidth: 1, padding: 14, marginBottom: 20 },
+  code: { fontSize: 11, fontFamily: Platform.OS === "ios" ? "Menlo" : "monospace", lineHeight: 18 },
+  debugPanel: { position: "absolute", bottom: 0, left: 0, right: 0, borderTopWidth: 1, padding: 12 },
+  debugHeader: { flexDirection: "row", alignItems: "center", justifyContent: "space-between", marginBottom: 6 },
+  debugTitle: { fontSize: 12, fontFamily: "Inter_700Bold" },
+  logLine: { fontSize: 10, fontFamily: Platform.OS === "ios" ? "Menlo" : "monospace", lineHeight: 15, paddingVertical: 1 },
 });

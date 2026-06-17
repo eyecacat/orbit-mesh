@@ -15,6 +15,7 @@ import { SafeAreaProvider } from "react-native-safe-area-context";
 
 import { ErrorBoundary } from "@/components/ErrorBoundary";
 import { AuthProvider, useAuth } from "@/context/AuthContext";
+import { BleProvider } from "@/context/BleContext";
 import { EarthquakeProvider } from "@/context/EarthquakeContext";
 import { SafetyProvider } from "@/context/SafetyContext";
 import { EarthquakeOverlay } from "@/components/EarthquakeOverlay";
@@ -72,15 +73,17 @@ export default function RootLayout() {
       <ErrorBoundary>
         <QueryClientProvider client={queryClient}>
           <AuthProvider>
-            <SafetyProvider>
-              <EarthquakeProvider>
-                <GestureHandlerRootView style={{ flex: 1 }}>
-                  <KeyboardProvider>
-                    <RootLayoutNav />
-                  </KeyboardProvider>
-                </GestureHandlerRootView>
-              </EarthquakeProvider>
-            </SafetyProvider>
+            <BleProvider>
+              <SafetyProvider>
+                <EarthquakeProvider>
+                  <GestureHandlerRootView style={{ flex: 1 }}>
+                    <KeyboardProvider>
+                      <RootLayoutNav />
+                    </KeyboardProvider>
+                  </GestureHandlerRootView>
+                </EarthquakeProvider>
+              </SafetyProvider>
+            </BleProvider>
           </AuthProvider>
         </QueryClientProvider>
       </ErrorBoundary>
