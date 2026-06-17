@@ -4,6 +4,7 @@ import React, { useEffect, useState } from "react";
 import { ActivityIndicator, Platform, ScrollView, StyleSheet, Text, Pressable, View } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 
+import { useBle } from "@/context/BleContext";
 import { useColors } from "@/hooks/useColors";
 
 interface SolarFlare {
@@ -26,6 +27,7 @@ interface GST {
 export default function HelioScreen() {
   const colors = useColors();
   const insets = useSafeAreaInsets();
+  const { connectedDevice, latestTelemetry } = useBle();
   const [flares, setFlares] = useState<SolarFlare[]>([]);
   const [gsts, setGsts] = useState<GST[]>([]);
   const [loading, setLoading] = useState(true);
@@ -55,6 +57,17 @@ export default function HelioScreen() {
     return { bg: colors.primary + "22", text: colors.primary };
   };
 
+  const isConnected = !!connectedDevice;
+  const hasData = !!latestTelemetry;
+
+  // Determine VLF anomaly status from BLE
+  const vlfAnomaly = latestTelemetry?.anomaly ?? false;
+  const vlfHz = latestTelemetry?.vlf_hz ?? 0;
+  const vlfAmplitude = latestTelemetry?.vlf_amplitude ?? 0;
+
+  // Schumann resonance baseline: 7.83 Hz — check if BLE reading is near it
+  const schumannDelta = vlfHz > 0 ? Math.abs(vlfHz - 7.83).toFixed(2) : null;
+
   return (
     <View style={[styles.root, { backgroundColor: colors.background }]}>
       <View style={[styles.header, { paddingTop: topPad + 8, borderBottomColor: colors.border }]}>
@@ -68,19 +81,76 @@ export default function HelioScreen() {
       </View>
 
       <ScrollView contentContainerStyle={{ padding: 20, paddingBottom: 100 }} showsVerticalScrollIndicator={false}>
+
         {/* VLF Status */}
         <View style={[styles.vlfCard, { backgroundColor: colors.card, borderColor: colors.border }]}>
           <View style={styles.vlfHeader}>
             <Feather name="radio" size={18} color={colors.primary} />
             <Text style={[styles.vlfTitle, { color: colors.foreground }]}>VLF Sinyal Durumu</Text>
           </View>
-          <View style={[styles.vlfStatus, { backgroundColor: colors.warning + "22", borderColor: colors.warning + "44" }]}>
-            <Feather name="clock" size={14} color={colors.warning} />
-            <Text style={[styles.vlfStatusText, { color: colors.warning }]}>Donanım Bekleniyor — Deneyap Kart Bağlantısı Gerekli</Text>
-          </View>
+
+          {isConnected && hasData ? (
+            <>
+              <View style={[styles.vlfStatus, {
+                backgroundColor: vlfAnomaly ? colors.danger + "22" : colors.accent + "22",
+                borderColor: vlfAnomaly ? colors.danger + "44" : colors.accent + "44",
+              }]}>
+                <Feather name={vlfAnomaly ? "alert-triangle" : "check-circle"} size={14} color={vlfAnomaly ? colors.danger : colors.accent} />
+                <Text style={[styles.vlfStatusText, { color: vlfAnomaly ? colors.danger : colors.accent }]}>
+                  {vlfAnomaly
+                    ? `ANOMALİ: ${connectedDevice.name ?? connectedDevice.id}`
+                    : `Aktif: ${connectedDevice.name ?? connectedDevice.id}`}
+                </Text>
+              </View>
+              {/* VLF readings */}
+              <View style={styles.vlfGrid}>
+                <View style={styles.vlfCell}>
+                  <Text style={[styles.vlfCellLabel, { color: colors.mutedForeground }]}>VLF Frekans</Text>
+                  <Text style={[styles.vlfCellValue, { color: colors.primary }]}>
+                    {vlfHz > 0 ? `${vlfHz.toFixed(2)} Hz` : "—"}
+                  </Text>
+                </View>
+                <View style={styles.vlfCell}>
+                  <Text style={[styles.vlfCellLabel, { color: colors.mutedForeground }]}>Amplitüd</Text>
+                  <Text style={[styles.vlfCellValue, { color: colors.primary }]}>
+                    {vlfAmplitude > 0 ? vlfAmplitude.toFixed(3) : "—"}
+                  </Text>
+                </View>
+                <View style={styles.vlfCell}>
+                  <Text style={[styles.vlfCellLabel, { color: colors.mutedForeground }]}>Schumann (7.83 Hz)</Text>
+                  <Text style={[styles.vlfCellValue, { color: schumannDelta !== null ? colors.accent : colors.mutedForeground }]}>
+                    {schumannDelta !== null ? `Δ ${schumannDelta} Hz` : "—"}
+                  </Text>
+                </View>
+                <View style={styles.vlfCell}>
+                  <Text style={[styles.vlfCellLabel, { color: colors.mutedForeground }]}>Batarya</Text>
+                  <Text style={[styles.vlfCellValue, { color: (latestTelemetry?.battery ?? 0) > 20 ? colors.accent : colors.danger }]}>
+                    {(latestTelemetry?.battery ?? 0) > 0 ? `%${latestTelemetry!.battery}` : "—"}
+                  </Text>
+                </View>
+              </View>
+              <Text style={[styles.vlfMeta, { color: colors.mutedForeground }]}>
+                Node: {latestTelemetry.nodeId} · {new Date(latestTelemetry.receivedAt).toLocaleTimeString("tr-TR")}
+              </Text>
+            </>
+          ) : isConnected ? (
+            <View style={[styles.vlfStatus, { backgroundColor: colors.primary + "22", borderColor: colors.primary + "44" }]}>
+              <Feather name="bluetooth" size={14} color={colors.primary} />
+              <Text style={[styles.vlfStatusText, { color: colors.primary }]}>
+                {connectedDevice.name ?? connectedDevice.id} bağlı — VLF verisi bekleniyor...
+              </Text>
+            </View>
+          ) : (
+            <View style={[styles.vlfStatus, { backgroundColor: colors.warning + "22", borderColor: colors.warning + "44" }]}>
+              <Feather name="clock" size={14} color={colors.warning} />
+              <Text style={[styles.vlfStatusText, { color: colors.warning }]}>
+                Donanım Bağlı Değil — BLE ekranından Deneyap Kart bağlayın
+              </Text>
+            </View>
+          )}
+
           <Text style={[styles.vlfDesc, { color: colors.mutedForeground }]}>
-            Gerçek VLF sinyal verisi için Deneyap Kart'ı BLE üzerinden bağlayın.
-            Schumann rezonansı (7.83 Hz) ve atmosferik VLF sinyalleri izlenecek.
+            Schumann rezonansı (7.83 Hz) ve atmosferik VLF sinyalleri {isConnected ? "izleniyor." : "için Deneyap Kart bağlantısı gerekli."}
           </Text>
         </View>
 
@@ -167,6 +237,11 @@ const styles = StyleSheet.create({
   vlfTitle: { fontSize: 16, fontFamily: "Inter_700Bold" },
   vlfStatus: { flexDirection: "row", alignItems: "center", gap: 8, borderRadius: 10, borderWidth: 1, padding: 10 },
   vlfStatusText: { fontSize: 12, fontFamily: "Inter_500Medium", flex: 1 },
+  vlfGrid: { flexDirection: "row", flexWrap: "wrap", gap: 10 },
+  vlfCell: { width: "45%", gap: 2 },
+  vlfCellLabel: { fontSize: 11, fontFamily: "Inter_500Medium" },
+  vlfCellValue: { fontSize: 18, fontFamily: "Inter_700Bold" },
+  vlfMeta: { fontSize: 11, fontFamily: "Inter_400Regular" },
   vlfDesc: { fontSize: 13, fontFamily: "Inter_400Regular", lineHeight: 20 },
   sectionHeader: { flexDirection: "row", alignItems: "center", justifyContent: "space-between", marginBottom: 12 },
   sectionTitle: { fontSize: 17, fontFamily: "Inter_700Bold" },
