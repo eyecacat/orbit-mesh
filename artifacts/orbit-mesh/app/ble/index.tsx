@@ -143,13 +143,27 @@ export default function BleScreen() {
     (async () => {
       try {
         const { PermissionsAndroid } = require("react-native");
-        const results = await PermissionsAndroid.requestMultiple([
-          PermissionsAndroid.PERMISSIONS.BLUETOOTH_SCAN,
-          PermissionsAndroid.PERMISSIONS.BLUETOOTH_CONNECT,
-          PermissionsAndroid.PERMISSIONS.ACCESS_FINE_LOCATION,
-        ]);
-        const allGranted = Object.values(results).every(r => r === PermissionsAndroid.RESULTS.GRANTED);
-        setPermissionsOk(allGranted);
+        let allGranted = false;
+
+if (Platform.Version >= 31) {
+  const results = await PermissionsAndroid.requestMultiple([
+    PermissionsAndroid.PERMISSIONS.BLUETOOTH_SCAN,
+    PermissionsAndroid.PERMISSIONS.BLUETOOTH_CONNECT,
+    PermissionsAndroid.PERMISSIONS.ACCESS_FINE_LOCATION,
+  ]);
+
+  allGranted = Object.values(results).every(
+    r => r === PermissionsAndroid.RESULTS.GRANTED
+  );
+} else {
+  const result = await PermissionsAndroid.request(
+    PermissionsAndroid.PERMISSIONS.ACCESS_FINE_LOCATION
+  );
+
+  allGranted = result === PermissionsAndroid.RESULTS.GRANTED;
+}
+
+setPermissionsOk(allGranted);
         if (allGranted) {
           addLog("info", "Android BLE izinleri verildi: BLUETOOTH_SCAN, BLUETOOTH_CONNECT, ACCESS_FINE_LOCATION");
         } else {
