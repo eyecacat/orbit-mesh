@@ -19,7 +19,6 @@ import { useBle } from "@/context/BleContext";
 import { useColors } from "@/hooks/useColors";
 
 const SERVICE_UUID = "12345678-1234-1234-1234-123456789abc";
-const ORBIT_NAME_PREFIX = "ORBIT-MESH";
 
 export default function BleScreen() {
   const colors = useColors();
@@ -28,29 +27,20 @@ export default function BleScreen() {
   const [showDebug, setShowDebug] = useState(false);
 
   const {
-    isAvailable,
-    isExpoGoEnv,
-    permissionsGranted,
-    scanning,
-    devices,
-    connectedDevice,
-    telemetry,
-    latestTelemetry,
-    logs,
-    requestPermissions,
-    startScan,
-    stopScan,
-    connectToDevice,
-    disconnect,
+    isAvailable, isExpoGoEnv, permissionsGranted,
+    scanning, devices, connectedDevice,
+    telemetry, latestTelemetry,
+    anomalyScore, consensus, meshNodes, nodeMoving,
+    logs, requestPermissions, startScan, stopScan,
+    connectToDevice, disconnect,
   } = useBle();
 
   const isWeb = Platform.OS === "web";
   const isBlocked = isWeb || isExpoGoEnv || isAvailable === false || permissionsGranted === false;
-  const isReady = !isBlocked && isAvailable === true && permissionsGranted === true;
 
   async function handleScan() {
     if (isWeb || isExpoGoEnv) {
-      Alert.alert("BLE Yok", isWeb ? "Web ortamında BLE desteklenmiyor." : "Expo Go'da BLE çalışmaz. EAS Development Build gerekli.");
+      Alert.alert("BLE Yok", isWeb ? "Web ortamında BLE desteklenmiyor." : "Expo Go'da BLE çalışmaz.");
       return;
     }
     if (permissionsGranted !== true) {
@@ -62,28 +52,24 @@ export default function BleScreen() {
   }
 
   async function handleConnect(device: typeof devices[0]) {
-    try {
-      await connectToDevice(device);
-    } catch (err: any) {
-      Alert.alert("Bağlantı Hatası", err?.message ?? "Bilinmeyen hata");
-    }
+    try { await connectToDevice(device); }
+    catch (err: any) { Alert.alert("Bağlantı Hatası", err?.message ?? "Bilinmeyen hata"); }
   }
 
-  const bannerConfig = isWeb
-    ? { icon: "alert-triangle" as const, color: colors.danger, title: "Web Ortamı — BLE Yok", desc: "Fiziksel cihazda (Android/iOS) test edin." }
+  const banner = isWeb
+    ? { icon: "alert-triangle" as const, c: colors.danger, title: "Web Ortamı — BLE Yok", desc: "Fiziksel cihazda test edin." }
     : isExpoGoEnv
-    ? { icon: "alert-triangle" as const, color: colors.warning, title: "Expo Go — BLE Çalışmaz", desc: "EAS Development Build ile çalıştırın (eas build --profile development)." }
+    ? { icon: "alert-triangle" as const, c: colors.warning, title: "Expo Go — BLE Çalışmaz", desc: "EAS Development Build gerekli." }
     : isAvailable === false
-    ? { icon: "bluetooth" as const, color: colors.danger, title: "Bluetooth Kapalı", desc: "Cihazın Bluetooth'unu açın ve tekrar deneyin." }
+    ? { icon: "bluetooth" as const, c: colors.danger, title: "Bluetooth Kapalı", desc: "Bluetooth'u açın." }
     : permissionsGranted === false
-    ? { icon: "lock" as const, color: colors.warning, title: "İzinler Eksik", desc: "Android BLE izinleri gerekiyor. 'Cihaz Tara' butonuna dokunun." }
+    ? { icon: "lock" as const, c: colors.warning, title: "İzinler Eksik", desc: "Cihaz Tara'ya dokunun." }
     : connectedDevice
-    ? { icon: "check-circle" as const, color: colors.accent, title: `Bağlı: ${connectedDevice.name ?? connectedDevice.id}`, desc: "BLE bağlantısı aktif — telemetri akışı başladı." }
-    : { icon: "bluetooth" as const, color: colors.primary, title: "BLE Hazır", desc: "Tarama başlatabilirsiniz." };
+    ? { icon: "check-circle" as const, c: colors.accent, title: `Bağlı: ${connectedDevice.name ?? connectedDevice.id}`, desc: "BLE bağlantısı aktif." }
+    : { icon: "bluetooth" as const, c: colors.primary, title: "BLE Hazır", desc: "Tarama başlatabilirsiniz." };
 
   return (
     <View style={[styles.root, { backgroundColor: colors.background }]}>
-      {/* Header */}
       <View style={[styles.header, { paddingTop: topPad + 8, borderBottomColor: colors.border }]}>
         <Pressable onPress={() => router.back()} style={({ pressed }) => ({ opacity: pressed ? 0.6 : 1 })}>
           <Feather name="arrow-left" size={24} color={colors.foreground} />
@@ -95,13 +81,12 @@ export default function BleScreen() {
       </View>
 
       <ScrollView contentContainerStyle={{ padding: 20, paddingBottom: 140 }} showsVerticalScrollIndicator={false}>
-
         {/* Status Banner */}
-        <View style={[styles.statusBanner, { backgroundColor: bannerConfig.color + "22", borderColor: bannerConfig.color + "66" }]}>
-          <Feather name={bannerConfig.icon} size={20} color={bannerConfig.color} />
+        <View style={[styles.banner, { backgroundColor: banner.c + "22", borderColor: banner.c + "66" }]}>
+          <Feather name={banner.icon} size={20} color={banner.c} />
           <View style={{ flex: 1, marginLeft: 12 }}>
-            <Text style={[styles.bannerTitle, { color: bannerConfig.color }]}>{bannerConfig.title}</Text>
-            <Text style={[styles.bannerDesc, { color: colors.mutedForeground }]}>{bannerConfig.desc}</Text>
+            <Text style={[styles.bannerTitle, { color: banner.c }]}>{banner.title}</Text>
+            <Text style={[styles.bannerDesc, { color: colors.mutedForeground }]}>{banner.desc}</Text>
           </View>
         </View>
 
@@ -128,12 +113,26 @@ export default function BleScreen() {
           )}
         </Pressable>
 
-        {/* Connected Device Card */}
+        {/* Mesh Analytics Button */}
+        {meshNodes.length > 0 && (
+          <Pressable
+            style={({ pressed }) => [
+              styles.meshBtn,
+              { backgroundColor: colors.secondary, opacity: pressed ? 0.8 : 1 },
+            ]}
+            onPress={() => router.push("/mesh")}
+          >
+            <Feather name="server" size={16} color="white" />
+            <Text style={styles.meshBtnText}>Mesh Analytics Paneli ({meshNodes.length} node)</Text>
+          </Pressable>
+        )}
+
+        {/* Connected Device */}
         {connectedDevice && (
           <View style={[styles.connectedCard, { backgroundColor: colors.card, borderColor: colors.accent + "66" }]}>
             <LinearGradient colors={[colors.accent + "22", "transparent"]} style={StyleSheet.absoluteFill} />
             <View style={styles.connectedRow}>
-              <View style={[styles.connectedDot, { backgroundColor: colors.accent }]} />
+              <View style={[styles.dot, { backgroundColor: colors.accent }]} />
               <Feather name="check-circle" size={20} color={colors.accent} />
               <View style={{ flex: 1, marginLeft: 10 }}>
                 <Text style={[styles.connectedName, { color: colors.foreground }]}>{connectedDevice.name ?? "Bilinmeyen Cihaz"}</Text>
@@ -146,7 +145,37 @@ export default function BleScreen() {
           </View>
         )}
 
-        {/* Live Telemetry — Latest Values */}
+        {/* Anomaly Score + Consensus */}
+        {anomalyScore && (
+          <View style={[styles.scoreCard, { backgroundColor: colors.card, borderColor: colors.border }]}>
+            <Text style={[styles.scoreTitle, { color: colors.foreground }]}>Anomali Skoru</Text>
+            <View style={styles.scoreRow}>
+              <View style={[styles.scoreCircle, { borderColor: anomalyScore.total >= 60 ? colors.danger : anomalyScore.total >= 30 ? colors.warning : colors.accent }]}>
+                <Text style={[styles.scoreValue, { color: anomalyScore.total >= 60 ? colors.danger : anomalyScore.total >= 30 ? colors.warning : colors.accent }]}>
+                  {Math.round(anomalyScore.total)}
+                </Text>
+              </View>
+              <View style={{ flex: 1, gap: 4 }}>
+                <Text style={[styles.scoreLevel, { color: anomalyScore.total >= 60 ? colors.danger : anomalyScore.total >= 30 ? colors.warning : colors.accent }]}>
+                  {anomalyScore.level}
+                </Text>
+                <Text style={[styles.scoreBreakdown, { color: colors.mutedForeground }]}>
+                  VLF {anomalyScore.vlfScore.toFixed(0)} | Mag {anomalyScore.magneticScore.toFixed(0)} | Temp {anomalyScore.thermalScore.toFixed(0)} | Seis {anomalyScore.seismicScore.toFixed(0)}
+                </Text>
+              </View>
+            </View>
+            {anomalyScore.motionFiltered && (
+              <Text style={[styles.motionFiltered, { color: colors.warning }]}>
+                ⚠ Node hareket ediyor — yanlış pozitif filtre uygulandı
+              </Text>
+            )}
+            <Text style={[styles.consensusLabel, { color: colors.mutedForeground }]}>
+              Mesh Consensus: {consensus.status} ({consensus.anomalyCount}/{consensus.totalNodes} node)
+            </Text>
+          </View>
+        )}
+
+        {/* Live Telemetry */}
         {latestTelemetry && (
           <>
             <Text style={[styles.sectionTitle, { color: colors.foreground }]}>Anlık Telemetri</Text>
@@ -177,9 +206,22 @@ export default function BleScreen() {
                     {latestTelemetry.temp_c !== 0 ? `${latestTelemetry.temp_c.toFixed(1)}°C` : "bekleniyor"}
                   </Text>
                 </View>
+                {/* Magnetometer */}
+                <View style={styles.liveCell}>
+                  <Text style={[styles.liveCellLabel, { color: colors.mutedForeground }]}>Manyetik (X/Y/Z)</Text>
+                  <Text style={[styles.liveCellValue, { color: colors.secondary }]}>
+                    {latestTelemetry.mx.toFixed(1)} / {latestTelemetry.my.toFixed(1)} / {latestTelemetry.mz.toFixed(1)}
+                  </Text>
+                </View>
+                <View style={styles.liveCell}>
+                  <Text style={[styles.liveCellLabel, { color: colors.mutedForeground }]}>Hareket (X/Y/Z)</Text>
+                  <Text style={[styles.liveCellValue, { color: nodeMoving ? colors.warning : colors.foreground }]}>
+                    {latestTelemetry.ax.toFixed(2)} / {latestTelemetry.ay.toFixed(2)} / {latestTelemetry.az.toFixed(2)}
+                  </Text>
+                </View>
               </View>
               {latestTelemetry.nodeId !== "unknown" && (
-                <Text style={[styles.nodeIdText, { color: colors.mutedForeground }]}>
+                <Text style={[styles.nodeId, { color: colors.mutedForeground }]}>
                   Node: {latestTelemetry.nodeId} · {new Date(latestTelemetry.receivedAt).toLocaleTimeString("tr-TR")}
                 </Text>
               )}
@@ -233,11 +275,7 @@ export default function BleScreen() {
                   key={device.id}
                   style={({ pressed }) => [
                     styles.deviceCard,
-                    {
-                      backgroundColor: colors.card,
-                      borderColor: isConnected ? colors.accent + "66" : colors.border,
-                      opacity: pressed ? 0.7 : 1,
-                    },
+                    { backgroundColor: colors.card, borderColor: isConnected ? colors.accent + "66" : colors.border, opacity: pressed ? 0.7 : 1 },
                   ]}
                   onPress={() => isConnected ? disconnect() : handleConnect(device)}
                 >
@@ -274,14 +312,14 @@ export default function BleScreen() {
           </View>
         )}
 
-        {/* Firmware reference */}
+        {/* Firmware Reference */}
         <Text style={[styles.sectionTitle, { color: colors.foreground }]}>Beklenen Cihaz / JSON Formatı</Text>
         <View style={[styles.codeBox, { backgroundColor: colors.muted, borderColor: colors.border }]}>
-          <Text style={[styles.code, { color: colors.accent }]}>{`Cihaz Adı: ${ORBIT_NAME_PREFIX}-NODE1\nService: ${SERVICE_UUID}\n\n{\n  "nodeId": "DYK-001",\n  "timestamp": 1700000000,\n  "vlf_hz": 7.83,\n  "vlf_amplitude": 0.42,\n  "battery": 87,\n  "temp_c": 23.5,\n  "anomaly": false\n}`}</Text>
+          <Text style={[styles.code, { color: colors.accent }]}>{`Cihaz Adı: ORBIT-MESH-*\nService: ${SERVICE_UUID}\n\n{\n  "nodeId":"NODE01",\n  "timestamp":123456,\n  "vlf_hz":52.7,\n  "vlf_amplitude":812,\n  "battery":91,\n  "temp_c":28.3,\n  "mx":12.4,\n  "my":-4.2,\n  "mz":8.1,\n  "ax":0.01,\n  "ay":0.02,\n  "az":0.98,\n  "anomaly":false\n}`}</Text>
         </View>
       </ScrollView>
 
-      {/* Debug Log Panel */}
+      {/* Debug Panel */}
       {showDebug && (
         <View style={[styles.debugPanel, { backgroundColor: "#020810", borderTopColor: colors.border }]}>
           <View style={styles.debugHeader}>
@@ -297,11 +335,7 @@ export default function BleScreen() {
             showsVerticalScrollIndicator={false}
             renderItem={({ item }) => {
               const logColor = item.level === "error" ? colors.danger : item.level === "warn" ? colors.warning : item.level === "scan" ? colors.secondary : "#6ee7b7";
-              return (
-                <Text style={[styles.logLine, { color: logColor }]} numberOfLines={3}>
-                  {item.time} {item.message}
-                </Text>
-              );
+              return <Text style={[styles.logLine, { color: logColor }]} numberOfLines={3}>{item.time} {item.message}</Text>;
             }}
           />
         </View>
@@ -314,23 +348,34 @@ const styles = StyleSheet.create({
   root: { flex: 1 },
   header: { flexDirection: "row", alignItems: "center", justifyContent: "space-between", padding: 16, paddingBottom: 12, borderBottomWidth: 1 },
   headerTitle: { fontSize: 18, fontFamily: "Inter_700Bold" },
-  statusBanner: { flexDirection: "row", alignItems: "center", borderRadius: 16, borderWidth: 1, padding: 16, marginBottom: 16 },
+  banner: { flexDirection: "row", alignItems: "center", borderRadius: 16, borderWidth: 1, padding: 16, marginBottom: 16 },
   bannerTitle: { fontSize: 14, fontFamily: "Inter_700Bold", marginBottom: 2 },
   bannerDesc: { fontSize: 12, fontFamily: "Inter_400Regular" },
-  scanBtn: { flexDirection: "row", alignItems: "center", justifyContent: "center", gap: 10, borderRadius: 16, paddingVertical: 14, marginBottom: 20 },
+  scanBtn: { flexDirection: "row", alignItems: "center", justifyContent: "center", gap: 10, borderRadius: 16, paddingVertical: 14, marginBottom: 16 },
   scanText: { fontSize: 15, fontFamily: "Inter_700Bold" },
-  connectedCard: { borderRadius: 16, borderWidth: 1, padding: 16, marginBottom: 20, overflow: "hidden" },
+  meshBtn: { flexDirection: "row", alignItems: "center", justifyContent: "center", gap: 8, borderRadius: 12, paddingVertical: 12, marginBottom: 16 },
+  meshBtnText: { color: "white", fontSize: 14, fontFamily: "Inter_700Bold" },
+  connectedCard: { borderRadius: 16, borderWidth: 1, padding: 16, marginBottom: 16, overflow: "hidden" },
   connectedRow: { flexDirection: "row", alignItems: "center" },
-  connectedDot: { width: 8, height: 8, borderRadius: 4, marginRight: 8 },
+  dot: { width: 8, height: 8, borderRadius: 4, marginRight: 8 },
   connectedName: { fontSize: 15, fontFamily: "Inter_600SemiBold" },
   connectedId: { fontSize: 11, fontFamily: "Inter_400Regular", marginTop: 2 },
+  scoreCard: { borderRadius: 16, borderWidth: 1, padding: 16, marginBottom: 16, gap: 10 },
+  scoreTitle: { fontSize: 14, fontFamily: "Inter_700Bold" },
+  scoreRow: { flexDirection: "row", alignItems: "center", gap: 14 },
+  scoreCircle: { width: 56, height: 56, borderRadius: 28, borderWidth: 3, alignItems: "center", justifyContent: "center" },
+  scoreValue: { fontSize: 22, fontFamily: "Inter_700Bold" },
+  scoreLevel: { fontSize: 16, fontFamily: "Inter_700Bold" },
+  scoreBreakdown: { fontSize: 11, fontFamily: "Inter_400Regular" },
+  motionFiltered: { fontSize: 12, fontFamily: "Inter_600SemiBold" },
+  consensusLabel: { fontSize: 12, fontFamily: "Inter_400Regular" },
   sectionTitle: { fontSize: 16, fontFamily: "Inter_700Bold", marginBottom: 10, marginTop: 4 },
   liveCard: { borderRadius: 16, borderWidth: 1, padding: 16, marginBottom: 20, overflow: "hidden", gap: 12 },
   liveGrid: { flexDirection: "row", flexWrap: "wrap", gap: 12 },
   liveCell: { width: "45%", gap: 4 },
   liveCellLabel: { fontSize: 11, fontFamily: "Inter_500Medium" },
   liveCellValue: { fontSize: 20, fontFamily: "Inter_700Bold" },
-  nodeIdText: { fontSize: 11, fontFamily: "Inter_400Regular" },
+  nodeId: { fontSize: 11, fontFamily: "Inter_400Regular" },
   anomalyBadge: { flexDirection: "row", alignItems: "center", gap: 6, borderRadius: 10, borderWidth: 1, padding: 10 },
   anomalyText: { fontSize: 13, fontFamily: "Inter_700Bold" },
   historyCard: { borderRadius: 16, borderWidth: 1, marginBottom: 20, overflow: "hidden" },

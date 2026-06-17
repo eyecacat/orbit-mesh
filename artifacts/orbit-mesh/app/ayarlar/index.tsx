@@ -18,7 +18,13 @@ export default function AyarlarScreen() {
   const [darkMode] = useState(true);
   const topPad = Platform.OS === "web" ? 67 : insets.top;
 
-  const sections = [
+  type Item =
+    | { icon: string; label: string; value: string | undefined; action: () => void; kind?: "action" }
+    | { icon: string; label: string; action: () => void; kind?: "action" }
+    | { icon: string; label: string; toggle: true; value: boolean; onToggle: (v: boolean) => void; kind: "toggle" }
+    | { icon: string; label: string; value: string; kind?: "display" };
+
+  const sections: { title: string; items: Item[] }[] = [
     {
       title: "Hesap Ayarları",
       items: [
@@ -37,9 +43,9 @@ export default function AyarlarScreen() {
     {
       title: "Uygulama Ayarları",
       items: [
-        { icon: "moon", label: "Karanlık Mod", toggle: true, value: darkMode, onToggle: () => Alert.alert("Bilgi", "ORBIT-MESH sadece karanlık mod kullanır") },
-        { icon: "zap", label: "Deprem Algılama", toggle: true, value: quakeNotifs, onToggle: (v: boolean) => setQuakeNotifs(v) },
-        { icon: "radio", label: "NASA Güncellemeleri", toggle: true, value: nasaUpdates, onToggle: (v: boolean) => setNasaUpdates(v) },
+        { icon: "moon", label: "Karanlık Mod", toggle: true as const, value: darkMode, onToggle: () => Alert.alert("Bilgi", "ORBIT-MESH sadece karanlık mod kullanır"), kind: "toggle" as const },
+        { icon: "zap", label: "Deprem Algılama", toggle: true as const, value: quakeNotifs, onToggle: (v: boolean) => setQuakeNotifs(v), kind: "toggle" as const },
+        { icon: "radio", label: "NASA Güncellemeleri", toggle: true as const, value: nasaUpdates, onToggle: (v: boolean) => setNasaUpdates(v), kind: "toggle" as const },
       ],
     },
     {
@@ -52,9 +58,9 @@ export default function AyarlarScreen() {
     {
       title: "Hakkında",
       items: [
-        { icon: "info", label: "Uygulama Versiyonu", value: "v1.0.0" },
-        { icon: "award", label: "TEKNOFEST 2025", value: "Türkiye" },
-        { icon: "globe", label: "ORBIT-MESH", value: "Öğrenci Astronomi Ağı" },
+        { icon: "info", label: "Uygulama Versiyonu", value: "v1.0.0", kind: "display" as const },
+        { icon: "award", label: "TEKNOFEST 2025", value: "Türkiye", kind: "display" as const },
+        { icon: "globe", label: "ORBIT-MESH", value: "Öğrenci Astronomi Ağı", kind: "display" as const },
       ],
     },
   ];
@@ -82,35 +88,40 @@ export default function AyarlarScreen() {
           <View key={section.title} style={{ marginBottom: 8 }}>
             <Text style={[styles.sectionTitle, { color: colors.mutedForeground }]}>{section.title.toUpperCase()}</Text>
             <View style={[styles.sectionCard, { backgroundColor: colors.card, borderColor: colors.border }]}>
-              {section.items.map((item, idx) => (
-                <Pressable
-                  key={item.label}
-                  style={({ pressed }) => [
-                    styles.row,
-                    idx < section.items.length - 1 && [styles.rowBorder, { borderColor: colors.border }],
-                    { opacity: pressed && item.action ? 0.7 : 1 },
-                  ]}
-                  onPress={item.action}
-                  disabled={!item.action && !item.toggle}
-                >
-                  <View style={[styles.rowIcon, { backgroundColor: colors.muted }]}>
-                    <Feather name={item.icon as any} size={16} color={colors.primary} />
-                  </View>
-                  <Text style={[styles.rowLabel, { color: colors.foreground }]}>{item.label}</Text>
-                  {item.toggle !== undefined ? (
-                    <Switch
-                      value={item.value as boolean}
-                      onValueChange={item.onToggle}
-                      thumbColor={item.value ? colors.background : colors.mutedForeground}
-                      trackColor={{ false: colors.muted, true: colors.primary }}
-                    />
-                  ) : item.value ? (
-                    <Text style={[styles.rowValue, { color: colors.mutedForeground }]} numberOfLines={1}>{item.value as string}</Text>
-                  ) : item.action ? (
-                    <Feather name="chevron-right" size={16} color={colors.mutedForeground} />
-                  ) : null}
-                </Pressable>
-              ))}
+              {section.items.map((item, idx) => {
+                const isToggle = "kind" in item && item.kind === "toggle";
+                const hasValue = "value" in item && item.value !== undefined && item.value !== "";
+                const hasAction = "action" in item && typeof item.action === "function";
+                return (
+                  <Pressable
+                    key={item.label}
+                    style={({ pressed }) => [
+                      styles.row,
+                      idx < section.items.length - 1 && [styles.rowBorder, { borderColor: colors.border }],
+                      { opacity: pressed && hasAction ? 0.7 : 1 },
+                    ]}
+                    onPress={hasAction ? (item as any).action : undefined}
+                    disabled={!hasAction && !isToggle}
+                  >
+                    <View style={[styles.rowIcon, { backgroundColor: colors.muted }]}>
+                      <Feather name={item.icon as any} size={16} color={colors.primary} />
+                    </View>
+                    <Text style={[styles.rowLabel, { color: colors.foreground }]}>{item.label}</Text>
+                    {isToggle ? (
+                      <Switch
+                        value={(item as any).value}
+                        onValueChange={(item as any).onToggle}
+                        thumbColor={(item as any).value ? colors.background : colors.mutedForeground}
+                        trackColor={{ false: colors.muted, true: colors.primary }}
+                      />
+                    ) : hasValue ? (
+                      <Text style={[styles.rowValue, { color: colors.mutedForeground }]} numberOfLines={1}>{String(item.value)}</Text>
+                    ) : hasAction ? (
+                      <Feather name="chevron-right" size={16} color={colors.mutedForeground} />
+                    ) : null}
+                  </Pressable>
+                );
+              })}
             </View>
           </View>
         ))}

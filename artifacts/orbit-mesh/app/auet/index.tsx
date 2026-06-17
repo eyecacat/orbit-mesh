@@ -19,6 +19,7 @@ interface AuetEvent {
   nodeId?: string;
   vlf_hz?: number;
   vlf_amplitude?: number;
+  anomalyScore?: number;
 }
 
 const EVENT_TYPES = ["Titreşim", "Sismik", "Akustik", "Yeraltı Sesi", "VLF Anomali", "Diğer"];
@@ -27,7 +28,7 @@ const INTENSITIES = ["Düşük", "Orta", "Yüksek", "Kritik"];
 export default function AuetScreen() {
   const colors = useColors();
   const insets = useSafeAreaInsets();
-  const { connectedDevice, latestTelemetry } = useBle();
+  const { connectedDevice, latestTelemetry, anomalyScore, consensus } = useBle();
   const [events, setEvents] = useState<AuetEvent[]>([]);
   const [showForm, setShowForm] = useState(false);
   const [type, setType] = useState("Titreşim");
@@ -39,27 +40,28 @@ export default function AuetScreen() {
     AsyncStorage.getItem("@orbit-mesh/auet").then(d => { if (d) setEvents(JSON.parse(d)); });
   }, []);
 
-  // Auto-log BLE anomalies
+  // Auto-log BLE consensus anomalies
   React.useEffect(() => {
-    if (!latestTelemetry?.anomaly) return;
-    const autoEvent: AuetEvent = {
-      id: `ble-${latestTelemetry.receivedAt}`,
-      timestamp: new Date(latestTelemetry.receivedAt).toISOString(),
-      type: "VLF Anomali",
-      intensity: "Yüksek",
-      source: "ble",
-      nodeId: latestTelemetry.nodeId,
-      vlf_hz: latestTelemetry.vlf_hz,
-      vlf_amplitude: latestTelemetry.vlf_amplitude,
-      notes: `BLE otomatik: VLF=${latestTelemetry.vlf_hz.toFixed(2)}Hz amp=${latestTelemetry.vlf_amplitude.toFixed(3)}`,
-    };
+    if (consensus.status === "Normal") return;
+    const autoId = `consensus-${consensus.lastUpdated}`;
     setEvents(prev => {
-      if (prev.find(e => e.id === autoEvent.id)) return prev;
+      if (prev.find(e => e.id === autoId)) return prev;
+      const autoEvent: AuetEvent = {
+        id: autoId,
+        timestamp: new Date().toISOString(),
+        type: "VLF Anomali",
+        intensity: consensus.status === "Doğrulanmış" ? "Kritik" : "Yüksek",
+        source: "ble",
+        nodeId: latestTelemetry?.nodeId,
+        vlf_hz: latestTelemetry?.vlf_hz,
+        vlf_amplitude: latestTelemetry?.vlf_amplitude,
+        anomalyScore: anomalyScore ? Math.round(anomalyScore.total) : undefined,
+      };
       const updated = [autoEvent, ...prev];
       AsyncStorage.setItem("@orbit-mesh/auet", JSON.stringify(updated)).catch(() => {});
       return updated;
     });
-  }, [latestTelemetry?.receivedAt]);
+  }, [consensus.lastUpdated]);
 
   async function logEvent() {
     const event: AuetEvent = {
@@ -71,6 +73,7 @@ export default function AuetScreen() {
       nodeId: connectedDevice?.id,
       vlf_hz: latestTelemetry?.vlf_hz,
       vlf_amplitude: latestTelemetry?.vlf_amplitude,
+      anomalyScore: anomalyScore ? Math.round(anomalyScore.total) : undefined,
     };
     const updated = [event, ...events];
     setEvents(updated);
@@ -112,13 +115,12 @@ export default function AuetScreen() {
           </View>
         </View>
 
-        {/* Hardware Status */}
+        {/* Status */}
         {isConnected && hasData ? (
-          <View style={[styles.statusCard, { backgroundColor: colors.accent + "22", borderColor: colors.accent + "44" }]}>
-            <Feather name="check-circle" size={14} color={colors.accent} />
-            <Text style={[styles.statusText, { color: colors.accent }]}>
-              Cihaz bağlı: {connectedDevice.name ?? connectedDevice.id}
-              {latestTelemetry.anomaly ? " · ⚠ ANOMALİ" : " · Normal"}
+          <View style={[styles.statusCard, { backgroundColor: consensus.status !== "Normal" ? colors.danger + "22" : colors.accent + "22", borderColor: consensus.status !== "Normal" ? colors.danger + "44" : colors.accent + "44" }]}>
+            <Feather name={consensus.status !== "Normal" ? "alert-triangle" : "check-circle"} size={14} color={consensus.status !== "Normal" ? colors.danger : colors.accent} />
+            <Text style={[styles.statusText, { color: consensus.status !== "Normal" ? colors.danger : colors.accent }]}>
+              {consensus.status !== "Normal" ? `Mesh Anomali: ${consensus.status} (${consensus.anomalyCount} node)` : `Cihaz bağlı: ${connectedDevice.name ?? connectedDevice.id}`}
             </Text>
           </View>
         ) : isConnected ? (
@@ -135,33 +137,60 @@ export default function AuetScreen() {
           </View>
         )}
 
-        {/* Live telemetry panel (when connected) */}
+        {/* Anomaly Score Panel */}
+        {anomalyScore && (
+          <View style={[styles.scoreCard, { backgroundColor: colors.card, borderColor: colors.border }]}>
+            <Text style={[styles.scoreTitle, { color: colors.foreground }]}>Anomali Skoru</Text>
+            <View style={styles.scoreRow}>
+              <View style={[styles.scoreCircle, { borderColor: anomalyScore.total >= 60 ? colors.danger : anomalyScore.total >= 30 ? colors.warning : colors.accent }]}>
+                <Text style={[styles.scoreValue, { color: anomalyScore.total >= 60 ? colors.danger : anomalyScore.total >= 30 ? colors.warning : colors.accent }]}>
+                  {Math.round(anomalyScore.total)}
+                </Text>
+              </View>
+              <View style={{ flex: 1, gap: 4 }}>
+                <Text style={[styles.scoreLevel, { color: anomalyScore.total >= 60 ? colors.danger : anomalyScore.total >= 30 ? colors.warning : colors.accent }]}>
+                  {anomalyScore.level}
+                </Text>
+                <Text style={[styles.scoreBreakdown, { color: colors.mutedForeground }]}>
+                  VLF {anomalyScore.vlfScore.toFixed(0)} | Mag {anomalyScore.magneticScore.toFixed(0)} | Temp {anomalyScore.thermalScore.toFixed(0)} | Seis {anomalyScore.seismicScore.toFixed(0)}
+                </Text>
+              </View>
+            </View>
+            <Text style={[styles.consensusLabel, { color: colors.mutedForeground }]}>
+              Mesh Consensus: {consensus.status} ({consensus.anomalyCount}/{consensus.totalNodes} node)
+            </Text>
+          </View>
+        )}
+
+        {/* Live Telemetry */}
         {isConnected && hasData && (
           <View style={[styles.telemetryPanel, { backgroundColor: colors.card, borderColor: colors.border }]}>
             <Text style={[styles.telemetryTitle, { color: colors.foreground }]}>Anlık BLE Sensör Verisi</Text>
             <View style={styles.telemetryGrid}>
               <View style={styles.telemetryCell}>
                 <Text style={[styles.telemetryLabel, { color: colors.mutedForeground }]}>VLF Frekans</Text>
-                <Text style={[styles.telemetryValue, { color: colors.primary }]}>
-                  {latestTelemetry.vlf_hz > 0 ? `${latestTelemetry.vlf_hz.toFixed(2)} Hz` : "—"}
-                </Text>
+                <Text style={[styles.telemetryValue, { color: colors.primary }]}>{latestTelemetry.vlf_hz > 0 ? `${latestTelemetry.vlf_hz.toFixed(2)} Hz` : "—"}</Text>
               </View>
               <View style={styles.telemetryCell}>
                 <Text style={[styles.telemetryLabel, { color: colors.mutedForeground }]}>Amplitüd</Text>
-                <Text style={[styles.telemetryValue, { color: colors.primary }]}>
-                  {latestTelemetry.vlf_amplitude > 0 ? latestTelemetry.vlf_amplitude.toFixed(3) : "—"}
-                </Text>
+                <Text style={[styles.telemetryValue, { color: colors.primary }]}>{latestTelemetry.vlf_amplitude > 0 ? latestTelemetry.vlf_amplitude.toFixed(3) : "—"}</Text>
               </View>
               <View style={styles.telemetryCell}>
                 <Text style={[styles.telemetryLabel, { color: colors.mutedForeground }]}>Batarya</Text>
-                <Text style={[styles.telemetryValue, { color: latestTelemetry.battery > 20 ? colors.accent : colors.danger }]}>
-                  {latestTelemetry.battery > 0 ? `%${latestTelemetry.battery}` : "—"}
-                </Text>
+                <Text style={[styles.telemetryValue, { color: latestTelemetry.battery > 20 ? colors.accent : colors.danger }]}>{latestTelemetry.battery > 0 ? `%${latestTelemetry.battery}` : "—"}</Text>
               </View>
               <View style={styles.telemetryCell}>
                 <Text style={[styles.telemetryLabel, { color: colors.mutedForeground }]}>Sıcaklık</Text>
-                <Text style={[styles.telemetryValue, { color: colors.foreground }]}>
-                  {latestTelemetry.temp_c !== 0 ? `${latestTelemetry.temp_c.toFixed(1)}°C` : "—"}
+                <Text style={[styles.telemetryValue, { color: colors.foreground }]}>{latestTelemetry.temp_c !== 0 ? `${latestTelemetry.temp_c.toFixed(1)}°C` : "—"}</Text>
+              </View>
+              <View style={styles.telemetryCell}>
+                <Text style={[styles.telemetryLabel, { color: colors.mutedForeground }]}>Signal Quality</Text>
+                <Text style={[styles.telemetryValue, { color: colors.secondary }]}>{latestTelemetry.vlf_amplitude > 500 ? "Güçlü" : latestTelemetry.vlf_amplitude > 100 ? "Orta" : "Zayıf"}</Text>
+              </View>
+              <View style={styles.telemetryCell}>
+                <Text style={[styles.telemetryLabel, { color: colors.mutedForeground }]}>Current Score</Text>
+                <Text style={[styles.telemetryValue, { color: anomalyScore ? (anomalyScore.total >= 60 ? colors.danger : anomalyScore.total >= 30 ? colors.warning : colors.accent) : colors.mutedForeground }]}>
+                  {anomalyScore ? Math.round(anomalyScore.total) : "—"}
                 </Text>
               </View>
             </View>
@@ -171,9 +200,6 @@ export default function AuetScreen() {
                 <Text style={[styles.anomalyText, { color: colors.danger }]}>ANOMALİ ALGILANDI — otomatik log oluşturuldu</Text>
               </View>
             )}
-            <Text style={[styles.telemetryMeta, { color: colors.mutedForeground }]}>
-              Node: {latestTelemetry.nodeId} · {new Date(latestTelemetry.receivedAt).toLocaleTimeString("tr-TR")}
-            </Text>
           </View>
         )}
 
@@ -197,19 +223,7 @@ export default function AuetScreen() {
               ))}
             </View>
             <Text style={[styles.label, { color: colors.mutedForeground }]}>Notlar</Text>
-            <TextInput
-              style={[styles.input, { backgroundColor: colors.muted, color: colors.foreground, borderColor: colors.border }]}
-              value={notes}
-              onChangeText={setNotes}
-              placeholder="Gözlem notları..."
-              placeholderTextColor={colors.mutedForeground}
-              multiline
-            />
-            {isConnected && hasData && (
-              <Text style={[styles.autoNote, { color: colors.mutedForeground }]}>
-                BLE verisi otomatik eklenir: VLF={latestTelemetry.vlf_hz.toFixed(2)}Hz
-              </Text>
-            )}
+            <TextInput style={[styles.input, { backgroundColor: colors.muted, color: colors.foreground, borderColor: colors.border }]} value={notes} onChangeText={setNotes} placeholder="Gözlem notları..." placeholderTextColor={colors.mutedForeground} multiline />
             <Pressable style={[styles.logBtn, { backgroundColor: colors.accent }]} onPress={logEvent}>
               <Feather name="save" size={16} color={colors.background} />
               <Text style={[styles.logBtnText, { color: colors.background }]}>Kaydet</Text>
@@ -229,25 +243,15 @@ export default function AuetScreen() {
               <View style={styles.eventTop}>
                 <Text style={[styles.eventType, { color: colors.foreground }]}>{e.type}</Text>
                 <View style={{ flexDirection: "row", alignItems: "center", gap: 6 }}>
-                  {e.source === "ble" && (
-                    <View style={[styles.bleBadge, { backgroundColor: colors.accent + "22" }]}>
-                      <Feather name="bluetooth" size={10} color={colors.accent} />
-                      <Text style={[styles.bleBadgeText, { color: colors.accent }]}>BLE</Text>
-                    </View>
-                  )}
+                  {e.source === "ble" && <View style={[styles.bleBadge, { backgroundColor: colors.accent + "22" }]}><Feather name="bluetooth" size={10} color={colors.accent} /><Text style={[styles.bleBadgeText, { color: colors.accent }]}>BLE</Text></View>}
                   <View style={[styles.intensityBadge, { backgroundColor: intensityColor(e.intensity) + "33" }]}>
                     <Text style={[styles.intensityText, { color: intensityColor(e.intensity) }]}>{e.intensity}</Text>
                   </View>
                 </View>
               </View>
-              <Text style={[styles.eventTime, { color: colors.mutedForeground }]}>
-                {new Date(e.timestamp).toLocaleString("tr-TR")}
-              </Text>
-              {e.vlf_hz !== undefined && (
-                <Text style={[styles.eventMeta, { color: colors.primary }]}>
-                  VLF: {e.vlf_hz.toFixed(2)} Hz · Amp: {(e.vlf_amplitude ?? 0).toFixed(3)}
-                </Text>
-              )}
+              <Text style={[styles.eventTime, { color: colors.mutedForeground }]}>{new Date(e.timestamp).toLocaleString("tr-TR")}</Text>
+              {e.vlf_hz !== undefined && <Text style={[styles.eventMeta, { color: colors.primary }]}>VLF: {e.vlf_hz.toFixed(2)} Hz · Amp: {(e.vlf_amplitude ?? 0).toFixed(3)}</Text>}
+              {e.anomalyScore !== undefined && <Text style={[styles.eventMeta, { color: colors.warning }]}>Anomaly Score: {e.anomalyScore}</Text>}
               {e.notes && <Text style={[styles.eventNotes, { color: colors.mutedForeground }]}>{e.notes}</Text>}
             </View>
           ))
@@ -266,13 +270,20 @@ const styles = StyleSheet.create({
   infoDesc: { fontSize: 13, fontFamily: "Inter_400Regular", lineHeight: 20 },
   statusCard: { flexDirection: "row", alignItems: "center", gap: 8, borderRadius: 10, borderWidth: 1, padding: 10, marginBottom: 16 },
   statusText: { fontSize: 13, fontFamily: "Inter_500Medium", flex: 1 },
+  scoreCard: { borderRadius: 16, borderWidth: 1, padding: 16, marginBottom: 16, gap: 10 },
+  scoreTitle: { fontSize: 14, fontFamily: "Inter_700Bold" },
+  scoreRow: { flexDirection: "row", alignItems: "center", gap: 14 },
+  scoreCircle: { width: 56, height: 56, borderRadius: 28, borderWidth: 3, alignItems: "center", justifyContent: "center" },
+  scoreValue: { fontSize: 22, fontFamily: "Inter_700Bold" },
+  scoreLevel: { fontSize: 16, fontFamily: "Inter_700Bold" },
+  scoreBreakdown: { fontSize: 11, fontFamily: "Inter_400Regular" },
+  consensusLabel: { fontSize: 12, fontFamily: "Inter_400Regular" },
   telemetryPanel: { borderRadius: 16, borderWidth: 1, padding: 16, marginBottom: 16, gap: 10 },
   telemetryTitle: { fontSize: 14, fontFamily: "Inter_700Bold" },
   telemetryGrid: { flexDirection: "row", flexWrap: "wrap", gap: 10 },
   telemetryCell: { width: "45%", gap: 2 },
   telemetryLabel: { fontSize: 11, fontFamily: "Inter_500Medium" },
   telemetryValue: { fontSize: 18, fontFamily: "Inter_700Bold" },
-  telemetryMeta: { fontSize: 11, fontFamily: "Inter_400Regular" },
   anomalyRow: { flexDirection: "row", alignItems: "center", gap: 8, borderRadius: 8, padding: 8 },
   anomalyText: { fontSize: 12, fontFamily: "Inter_700Bold", flex: 1 },
   form: { borderRadius: 16, borderWidth: 1, padding: 20, marginBottom: 20, gap: 10 },
@@ -282,7 +293,6 @@ const styles = StyleSheet.create({
   chip: { paddingHorizontal: 12, paddingVertical: 6, borderRadius: 20, borderWidth: 1 },
   chipText: { fontSize: 12, fontFamily: "Inter_500Medium" },
   input: { borderRadius: 12, borderWidth: 1, paddingHorizontal: 14, paddingVertical: 12, fontSize: 15, fontFamily: "Inter_400Regular", minHeight: 70 },
-  autoNote: { fontSize: 11, fontFamily: "Inter_400Regular" },
   logBtn: { flexDirection: "row", alignItems: "center", justifyContent: "center", gap: 8, paddingVertical: 12, borderRadius: 12 },
   logBtnText: { fontSize: 14, fontFamily: "Inter_700Bold" },
   sectionTitle: { fontSize: 17, fontFamily: "Inter_700Bold", marginBottom: 12 },
