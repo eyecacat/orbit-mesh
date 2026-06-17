@@ -3,6 +3,10 @@
  *
  * BLE characteristic values arrive as base64-encoded UTF-8 strings.
  * Decode: base64 → byte array → UTF-8 string → JSON.parse
+ *
+ * Extended fields for seismic mesh network:
+ *   vlf_hz, vlf_amplitude, battery, temp_c,
+ *   mx, my, mz (magnetometer), ax, ay, az (accelerometer)
  */
 
 export interface NodeTelemetry {
@@ -12,6 +16,12 @@ export interface NodeTelemetry {
   vlf_amplitude: number;
   battery: number;
   temp_c: number;
+  mx: number;
+  my: number;
+  mz: number;
+  ax: number;
+  ay: number;
+  az: number;
   anomaly: boolean;
   receivedAt: number;
 }
@@ -82,17 +92,48 @@ export function parseTelemetry(
     const telemetry: NodeTelemetry = {
       nodeId: String(parsed.nodeId ?? parsed.node_id ?? parsed.id ?? "unknown"),
       timestamp: Number(parsed.timestamp ?? parsed.ts ?? Date.now()),
-      vlf_hz: parseFloat(parsed.vlf_hz ?? parsed.vlf ?? parsed.frequency ?? 0),
-      vlf_amplitude: parseFloat(parsed.vlf_amplitude ?? parsed.amplitude ?? parsed.amp ?? 0),
+      // VLF variants
+      vlf_hz: parseFloat(parsed.vlf_hz ?? parsed.vlf ?? parsed.frequency ?? parsed.freq ?? 0),
+      vlf_amplitude: parseFloat(parsed.vlf_amplitude ?? parsed.amplitude ?? parsed.amp ?? parsed.vlf_amp ?? 0),
+      // Battery
       battery: parseFloat(parsed.battery ?? parsed.bat ?? parsed.batt ?? 0),
+      // Temperature
       temp_c: parseFloat(parsed.temp_c ?? parsed.temp ?? parsed.temperature ?? 0),
-      anomaly: Boolean(parsed.anomaly ?? parsed.alert ?? false),
+      // Magnetometer
+      mx: parseFloat(parsed.mx ?? parsed.mag_x ?? parsed.magx ?? parsed.magnetometerX ?? 0),
+      my: parseFloat(parsed.my ?? parsed.mag_y ?? parsed.magy ?? parsed.magnetometerY ?? 0),
+      mz: parseFloat(parsed.mz ?? parsed.mag_z ?? parsed.magz ?? parsed.magnetometerZ ?? 0),
+      // Accelerometer
+      ax: parseFloat(parsed.ax ?? parsed.acc_x ?? parsed.accx ?? parsed.accelerometerX ?? 0),
+      ay: parseFloat(parsed.ay ?? parsed.acc_y ?? parsed.accy ?? parsed.accelerometerY ?? 0),
+      az: parseFloat(parsed.az ?? parsed.acc_z ?? parsed.accz ?? parsed.accelerometerZ ?? 0),
+      anomaly: Boolean(parsed.anomaly ?? parsed.alert ?? parsed.warn ?? false),
       receivedAt: Date.now(),
     };
 
-    // Validate — if all numerics are exactly 0 AND we have a raw JSON, warn but still return
     return { data: telemetry, raw };
   } catch (err: any) {
     return { data: null, raw, error: `Parse hatası: ${err?.message ?? err}` };
   }
+}
+
+/** Compute magnitude of the magnetic vector */
+export function magneticMagnitude(t: NodeTelemetry): number {
+  return Math.sqrt(t.mx * t.mx + t.my * t.my + t.mz * t.mz);
+}
+
+/** Compute motion magnitude from accelerometer */
+export function motionMagnitude(t: NodeTelemetry): number {
+  return Math.sqrt(t.ax * t.ax + t.ay * t.ay + t.az * t.az);
+}
+
+/** Check if node is likely moving (motion > 1.5 m/s²)
+ *  At rest: ~9.8 m/s² (gravity). Small deviation is normal.
+ *  Threshold: > 1.5 m/s² from expected gravity.
+ */
+export function isNodeMoving(t: NodeTelemetry, threshold: number = 1.5): boolean {
+  const motion = motionMagnitude(t);
+  // Gravity is roughly 1.0g = 9.8 m/s² if normalized, or 1.0 if raw
+  // ESP32 LSM303 likely reports raw values; use threshold as absolute deviation
+  return Math.abs(motion - 1.0) > threshold;
 }

@@ -1,11 +1,11 @@
 /**
- * BleContext — Global BLE singleton for ORBIT-MESH.
+ * BleContext — Global BLE singleton + Mesh Engine for ORBIT-MESH.
  *
  * Architecture:
- *  - Module-level `_manager` (BleManager) created exactly once for the app lifecycle.
- *  - React context exposes state (scanning, devices, connectedDevice, telemetry, logs).
- *  - Connection and notification subscription survive screen navigation.
- *  - Screens only READ from context; all BLE logic lives here.
+ *  - Module-level `_manager` (BleManager) created exactly once.
+ *  - React context exposes BLE state + mesh engine (baseline, anomaly, consensus).
+ *  - Connection and subscription survive screen navigation.
+ *  - Screens only READ; all BLE logic lives here.
  */
 
 import React, {
@@ -17,10 +17,15 @@ import React, {
   useState,
 } from "react";
 import { AppState, AppStateStatus, Platform } from "react-native";
-import { parseTelemetry } from "@/utils/telemetryParser";
-import type { NodeTelemetry } from "@/utils/telemetryParser";
 
-// ── BleManager singleton ────────────────────────────────────────────────────
+import { parseTelemetry, isNodeMoving } from "@/utils/telemetryParser";
+import type { NodeTelemetry } from "@/utils/telemetryParser";
+import { computeAnomalyScore } from "@/services/anomalyEngine";
+import type { AnomalyScore } from "@/services/anomalyEngine";
+import { recordScore, removeNode, getConsensus } from "@/services/meshConsensus";
+import type { ConsensusResult } from "@/services/meshConsensus";
+
+// ── BleManager singleton ───────────────────────────────────────────────────
 type BleManagerType = import("react-native-ble-plx").BleManager;
 type BleDeviceType = import("react-native-ble-plx").Device;
 type SubType = { remove(): void };
@@ -51,7 +56,7 @@ function isExpoGo(): boolean {
   }
 }
 
-// ── Types exposed to consumers ──────────────────────────────────────────────
+// ── Types ──────────────────────────────────────────────────────────────────
 export interface BleDeviceInfo {
   id: string;
   name: string | null;
@@ -69,8 +74,17 @@ export interface LogEntry {
   message: string;
 }
 
+export interface MeshNodeStatus {
+  id: string;
+  name: string | null;
+  lastSeen: number;
+  telemetry: NodeTelemetry | null;
+  anomalyScore: AnomalyScore | null;
+  health: string;
+  isConnected: boolean;
+}
+
 export interface BleContextValue {
-  // State
   isAvailable: boolean | null;
   isExpoGoEnv: boolean;
   permissionsGranted: boolean | null;
@@ -80,6 +94,11 @@ export interface BleContextValue {
   telemetry: NodeTelemetry[];
   latestTelemetry: NodeTelemetry | null;
   logs: LogEntry[];
+  // Mesh engine
+  anomalyScore: AnomalyScore | null;
+  consensus: ConsensusResult;
+  meshNodes: MeshNodeStatus[];
+  nodeMoving: boolean;
   // Actions
   requestPermissions(): Promise<boolean>;
   startScan(): void;
@@ -95,7 +114,17 @@ const SERVICE_UUID = "12345678-1234-1234-1234-123456789abc";
 const ORBIT_NAME_PREFIX = "ORBIT-MESH";
 const SCAN_TIMEOUT = 15000;
 
-// ── Provider ────────────────────────────────────────────────────────────────
+// ── Default consensus ─────────────────────────────────────────────────────
+const DEFAULT_CONSENSUS: ConsensusResult = {
+  status: "Normal",
+  anomalyCount: 0,
+  totalNodes: 0,
+  participatingNodes: 0,
+  nodeScores: [],
+  lastUpdated: Date.now(),
+};
+
+// ── Provider ───────────────────────────────────────────────────────────────
 export function BleProvider({ children }: { children: React.ReactNode }) {
   const [isAvailable, setIsAvailable] = useState<boolean | null>(null);
   const [permissionsGranted, setPermissionsGranted] = useState<boolean | null>(null);
@@ -104,28 +133,58 @@ export function BleProvider({ children }: { children: React.ReactNode }) {
   const [connectedDevice, setConnectedDevice] = useState<BleDeviceInfo | null>(null);
   const [telemetry, setTelemetry] = useState<NodeTelemetry[]>([]);
   const [logs, setLogs] = useState<LogEntry[]>([]);
+  // Mesh engine state
+  const [anomalyScore, setAnomalyScore] = useState<AnomalyScore | null>(null);
+  const [consensus, setConsensus] = useState<ConsensusResult>(DEFAULT_CONSENSUS);
+  const [meshNodes, setMeshNodes] = useState<MeshNodeStatus[]>([]);
+  const [nodeMoving, setNodeMoving] = useState(false);
 
   const scanTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const discoveredIds = useRef<Set<string>>(new Set());
   const rawDeviceRef = useRef<BleDeviceType | null>(null);
   const isExpoGoEnv = isExpoGo();
+  const meshNodeRef = useRef<Map<string, MeshNodeStatus>>(new Map());
 
   const addLog = useCallback((level: LogLevel, message: string) => {
     const time = new Date().toLocaleTimeString("tr-TR", {
-      hour12: false,
-      hour: "2-digit",
-      minute: "2-digit",
-      second: "2-digit",
+      hour12: false, hour: "2-digit", minute: "2-digit", second: "2-digit",
     });
     setLogs(prev =>
-      [
-        { id: `${Date.now()}-${Math.random().toString(36).slice(2, 5)}`, time, level, message },
-        ...prev,
-      ].slice(0, 300),
+      [{ id: `${Date.now()}-${Math.random().toString(36).slice(2, 5)}`, time, level, message }, ...prev].slice(0, 300),
     );
   }, []);
 
-  // ── BLE state monitoring (module-level, survives navigation) ─────────────
+  // ── Mesh node update helper ─────────────────────────────────────────────
+  const updateMeshNode = useCallback((t: NodeTelemetry, connected: boolean) => {
+    const score = computeAnomalyScore(t);
+    const moving = isNodeMoving(t);
+    setNodeMoving(moving);
+    setAnomalyScore(score);
+
+    const health =
+      score.level === "Kritik" ? "Kritik" :
+      score.level === "Yüksek" ? "Yüksek" :
+      score.level === "Şüpheli" ? "Şüpheli" :
+      moving ? "Hareket" :
+      "Sağlıklı";
+
+    const node: MeshNodeStatus = {
+      id: t.nodeId,
+      name: connectedDevice?.name ?? null,
+      lastSeen: t.receivedAt,
+      telemetry: t,
+      anomalyScore: score,
+      health,
+      isConnected: connected,
+    };
+
+    meshNodeRef.current.set(t.nodeId, node);
+    setMeshNodes(Array.from(meshNodeRef.current.values()));
+    recordScore(score);
+    setConsensus(getConsensus());
+  }, [connectedDevice]);
+
+  // ── BLE state monitoring ─────────────────────────────────────────────────
   useEffect(() => {
     if (Platform.OS === "web") {
       setIsAvailable(false);
@@ -144,25 +203,18 @@ export function BleProvider({ children }: { children: React.ReactNode }) {
       return;
     }
 
-    // Only register state listener once
     if (!_stateChangeSub) {
       _stateChangeSub = mgr.onStateChange(state => {
         const ok = state === "PoweredOn";
         setIsAvailable(ok);
         addLog("info", `Bluetooth durumu: ${state}`);
-        if (state === "PoweredOff") {
-          addLog("warn", "Bluetooth kapatıldı.");
-        }
       }, true);
     } else {
-      // Already registered — just read current state
-      mgr.state().then(state => {
-        setIsAvailable(state === "PoweredOn");
-      }).catch(() => {});
+      mgr.state().then(state => setIsAvailable(state === "PoweredOn")).catch(() => {});
     }
   }, [addLog, isExpoGoEnv]);
 
-  // ── App background/foreground: keep connection ───────────────────────────
+  // ── App background/foreground ─────────────────────────────────────────────
   useEffect(() => {
     const handler = (next: AppStateStatus) => {
       if (next === "active" && rawDeviceRef.current) {
@@ -254,9 +306,7 @@ export function BleProvider({ children }: { children: React.ReactNode }) {
         if (!matchesName && !matchesService) return;
 
         const info: BleDeviceInfo = {
-          id,
-          name,
-          rssi,
+          id, name, rssi,
           isConnectable: device.isConnectable ?? null,
           serviceUUIDs: device.serviceUUIDs ?? null,
           manufacturerData: device.manufacturerData ?? null,
@@ -265,9 +315,7 @@ export function BleProvider({ children }: { children: React.ReactNode }) {
         if (!discoveredIds.current.has(id)) {
           discoveredIds.current.add(id);
           addLog("scan", `Cihaz bulundu: ${name ?? id} (RSSI: ${rssi ?? "?"} dBm)`);
-          setDevices(prev =>
-            [...prev, info].sort((a, b) => (b.rssi ?? -100) - (a.rssi ?? -100)),
-          );
+          setDevices(prev => [...prev, info].sort((a, b) => (b.rssi ?? -100) - (a.rssi ?? -100)));
         } else {
           setDevices(prev =>
             prev
@@ -281,7 +329,7 @@ export function BleProvider({ children }: { children: React.ReactNode }) {
     scanTimerRef.current = setTimeout(() => {
       mgr.stopDeviceScan();
       setScanning(false);
-      addLog("info", "Tarama zaman aşımı (15s). Tara butonuna tekrar basın.");
+      addLog("info", "Tarama zaman aşımı (15s).");
     }, SCAN_TIMEOUT);
   }, [addLog]);
 
@@ -296,7 +344,7 @@ export function BleProvider({ children }: { children: React.ReactNode }) {
     rawDeviceRef.current = null;
   }
 
-  // ── Connect ──────────────────────────────────────────────────────────────
+  // ── Connect ─────────────────────────────────────────────────────────────
   const connectToDevice = useCallback(async (device: BleDeviceInfo) => {
     const mgr = getManager();
     if (!mgr) return;
@@ -304,7 +352,6 @@ export function BleProvider({ children }: { children: React.ReactNode }) {
     addLog("info", `Bağlanıyor: ${device.name ?? device.id}...`);
 
     try {
-      // Stop scan first
       mgr.stopDeviceScan();
       setScanning(false);
 
@@ -313,12 +360,16 @@ export function BleProvider({ children }: { children: React.ReactNode }) {
       addLog("info", `Bağlantı kuruldu: ${raw.id}`);
       setConnectedDevice(device);
 
-      // Disconnect listener — update state when device disconnects
       _disconnectSub = mgr.onDeviceDisconnected(device.id, (err, _d) => {
         addLog("warn", err ? `Bağlantı koptu: ${err.message}` : "Cihaz bağlantısı kesildi.");
+        removeNode(device.id);
+        meshNodeRef.current.delete(device.id);
+        setMeshNodes(Array.from(meshNodeRef.current.values()));
         _cleanupConnection();
         setConnectedDevice(null);
         setTelemetry([]);
+        setAnomalyScore(null);
+        setConsensus(getConsensus());
       });
 
       const discovered = await raw.discoverAllServicesAndCharacteristics();
@@ -332,10 +383,8 @@ export function BleProvider({ children }: { children: React.ReactNode }) {
         for (const ch of chars) {
           if (!ch.isNotifiable) continue;
 
-          // Subscribe to ALL notifiable characteristics (not just matching service)
           const sub = ch.monitor((err, characteristic) => {
             if (err) {
-              // BLE monitor sends an error with code 205 when connection drops — handled by disconnectSub
               if ((err as any).errorCode !== 205) {
                 addLog("error", `Bildirim hatası [${ch.uuid.slice(0, 8)}]: ${err.message}`);
               }
@@ -343,7 +392,7 @@ export function BleProvider({ children }: { children: React.ReactNode }) {
             }
             if (!characteristic?.value) return;
 
-            // ── Debug log chain: raw BLE payload before any parsing ──
+            // Debug log chain
             const b64 = characteristic.value ?? "";
             addLog("scan", `[BASE64] ${b64}`);
 
@@ -351,14 +400,11 @@ export function BleProvider({ children }: { children: React.ReactNode }) {
             addLog("scan", `[RAW] ${parsed.raw}`);
             if ("error" in parsed && parsed.error) {
               addLog("error", `[PARSE-ERR] ${parsed.error}`);
-            } else {
-              addLog("info", `[PARSED] ${JSON.stringify(parsed.data)}`);
-            }
-            // ── ── ── ── ── ── ── ── ── ── ── ── ── ── ── ── ── ──
-
-            if (!parsed.data) {
               return;
             }
+            addLog("info", `[PARSED] ${JSON.stringify(parsed.data)}`);
+
+            if (!parsed.data) return;
 
             const t = parsed.data;
             addLog(
@@ -367,11 +413,12 @@ export function BleProvider({ children }: { children: React.ReactNode }) {
             );
 
             setTelemetry(prev => [t, ...prev].slice(0, 200));
+            updateMeshNode(t, true);
           });
 
           _notifySubs.push(sub);
           subscribedCount++;
-          addLog("info", `  Bildirim aboneliği: ${ch.uuid} (svc: ${svc.uuid.slice(0, 8)})`);
+          addLog("info", `  Bildirim: ${ch.uuid.slice(0, 8)} (${svc.uuid.slice(0, 8)})`);
         }
       }
 
@@ -384,9 +431,9 @@ export function BleProvider({ children }: { children: React.ReactNode }) {
       setConnectedDevice(null);
       throw err;
     }
-  }, [addLog]);
+  }, [addLog, updateMeshNode]);
 
-  // ── Disconnect ───────────────────────────────────────────────────────────
+  // ── Disconnect ────────────────────────────────────────────────────────────
   const disconnect = useCallback(() => {
     const mgr = getManager();
     if (!mgr || !rawDeviceRef.current) return;
@@ -400,9 +447,14 @@ export function BleProvider({ children }: { children: React.ReactNode }) {
         addLog("error", `Bağlantı kesme hatası: ${err?.message ?? err}`);
       })
       .finally(() => {
+        removeNode(id);
+        meshNodeRef.current.delete(id);
+        setMeshNodes(Array.from(meshNodeRef.current.values()));
         _cleanupConnection();
         setConnectedDevice(null);
         setTelemetry([]);
+        setAnomalyScore(null);
+        setConsensus(getConsensus());
       });
   }, [addLog]);
 
@@ -422,6 +474,10 @@ export function BleProvider({ children }: { children: React.ReactNode }) {
         telemetry,
         latestTelemetry,
         logs,
+        anomalyScore,
+        consensus,
+        meshNodes,
+        nodeMoving,
         requestPermissions,
         startScan,
         stopScan,
