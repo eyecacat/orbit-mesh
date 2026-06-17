@@ -1,3 +1,4 @@
+import { NASA_API_KEY } from "@/lib/env";
 import { Feather } from "@expo/vector-icons";
 import { LinearGradient } from "expo-linear-gradient";
 import { router } from "expo-router";
@@ -52,8 +53,8 @@ export default function HomeScreen() {
       const end = new Date().toISOString().split("T")[0];
       const start = new Date(Date.now() - 7 * 24 * 60 * 60 * 1000).toISOString().split("T")[0];
       const [flaresRes, cmesRes] = await Promise.all([
-        fetch(`https://api.nasa.gov/DONKI/FLR?startDate=${start}&endDate=${end}&api_key=DEMO_KEY`),
-        fetch(`https://api.nasa.gov/DONKI/CME?startDate=${start}&endDate=${end}&api_key=DEMO_KEY`),
+        fetch(`https://api.nasa.gov/DONKI/FLR?startDate=${start}&endDate=${end}&api_key=${NASA_API_KEY}`),
+        fetch(`https://api.nasa.gov/DONKI/CME?startDate=${start}&endDate=${end}&api_key=${NASA_API_KEY}`),
       ]);
       if (flaresRes.ok) setFlares((await flaresRes.json()).slice(0, 3));
       if (cmesRes.ok) setCmes((await cmesRes.json()).slice(0, 2));

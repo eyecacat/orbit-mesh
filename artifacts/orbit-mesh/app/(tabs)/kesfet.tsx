@@ -1,3 +1,4 @@
+import { NASA_API_KEY } from "@/lib/env";
 import { Feather } from "@expo/vector-icons";
 import { LinearGradient } from "expo-linear-gradient";
 import { router } from "expo-router";
@@ -38,7 +39,7 @@ export default function KesfetScreen() {
     try {
       const start = new Date(Date.now() - 3 * 24 * 60 * 60 * 1000).toISOString().split("T")[0];
       const end = new Date().toISOString().split("T")[0];
-      const res = await fetch(`https://api.nasa.gov/DONKI/notifications?startDate=${start}&endDate=${end}&type=all&api_key=DEMO_KEY`);
+      const res = await fetch(`https://api.nasa.gov/DONKI/notifications?startDate=${start}&endDate=${end}&type=all&api_key=${NASA_API_KEY}`);
       if (res.ok) {
         const data = await res.json();
         setNotifications(data.slice(0, 5));
