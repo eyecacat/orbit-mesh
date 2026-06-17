@@ -343,15 +343,24 @@ export function BleProvider({ children }: { children: React.ReactNode }) {
             }
             if (!characteristic?.value) return;
 
-            const result = parseTelemetry(characteristic.value);
+            // ── Debug log chain: raw BLE payload before any parsing ──
+            const b64 = characteristic.value ?? "";
+            addLog("scan", `[BASE64] ${b64}`);
 
-            if (!result.data) {
-              // Log the parse error with raw string for debugging
-              addLog("warn", `Parse hatası [${ch.uuid.slice(0, 8)}]: ${(result as any).error ?? "?"} | raw="${result.raw.slice(0, 60)}"`);
+            const parsed = parseTelemetry(b64);
+            addLog("scan", `[RAW] ${parsed.raw}`);
+            if ("error" in parsed && parsed.error) {
+              addLog("error", `[PARSE-ERR] ${parsed.error}`);
+            } else {
+              addLog("info", `[PARSED] ${JSON.stringify(parsed.data)}`);
+            }
+            // ── ── ── ── ── ── ── ── ── ── ── ── ── ── ── ── ── ──
+
+            if (!parsed.data) {
               return;
             }
 
-            const t = result.data;
+            const t = parsed.data;
             addLog(
               t.anomaly ? "warn" : "info",
               `Telemetri: nodeId=${t.nodeId} vlf=${t.vlf_hz.toFixed(2)}Hz amp=${t.vlf_amplitude.toFixed(3)} bat=${t.battery}% temp=${t.temp_c}°C${t.anomaly ? " ⚠ ANOMALİ" : ""}`,
