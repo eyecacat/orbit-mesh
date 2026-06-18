@@ -1,0 +1,12 @@
+{
+  "expo": {
+    "extra": {
+      "eas": {
+        "projectId": "c6ca47d6-33db-407c-b0c9-eb90836e869f"
+      }
+    },
+    "android": {
+      "package": "com.orbitmesh.workspace"
+    }
+  }
+}
