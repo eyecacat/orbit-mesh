@@ -13,12 +13,12 @@ import { GestureHandlerRootView } from "react-native-gesture-handler";
 import { KeyboardProvider } from "react-native-keyboard-controller";
 import { SafeAreaProvider } from "react-native-safe-area-context";
 
+import { EarthquakeOverlay } from "@/components/EarthquakeOverlay";
 import { ErrorBoundary } from "@/components/ErrorBoundary";
 import { AuthProvider, useAuth } from "@/context/AuthContext";
 import { BleProvider } from "@/context/BleContext";
 import { EarthquakeProvider } from "@/context/EarthquakeContext";
 import { SafetyProvider } from "@/context/SafetyContext";
-import { EarthquakeOverlay } from "@/components/EarthquakeOverlay";
 
 SplashScreen.preventAutoHideAsync();
 
@@ -31,13 +31,18 @@ function AuthGate() {
 
   useEffect(() => {
     if (loading) return;
+
     const inAuth = segments[0] === "auth";
+
     if (!user && !inAuth) {
       router.replace("/auth");
-    } else if (user && inAuth) {
+      return;
+    }
+
+    if (user && inAuth) {
       router.replace("/");
     }
-  }, [user, loading, segments]);
+  }, [user, loading, segments, router]);
 
   return null;
 }
@@ -62,7 +67,7 @@ export default function RootLayout() {
 
   useEffect(() => {
     if (fontsLoaded || fontError) {
-      SplashScreen.hideAsync();
+      void SplashScreen.hideAsync();
     }
   }, [fontsLoaded, fontError]);
 

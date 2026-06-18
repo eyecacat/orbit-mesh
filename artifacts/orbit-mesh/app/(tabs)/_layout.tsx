@@ -1,121 +1,93 @@
-import { BlurView } from "expo-blur";
-import { isLiquidGlassAvailable } from "expo-glass-effect";
-import { Tabs } from "expo-router";
-import { Icon, Label, NativeTabs } from "expo-router/unstable-native-tabs";
-import { SymbolView } from "expo-symbols";
 import { Feather } from "@expo/vector-icons";
+import { LinearGradient } from "expo-linear-gradient";
+import { Tabs } from "expo-router";
 import React from "react";
-import { Platform, StyleSheet, View, useColorScheme } from "react-native";
+import { Platform, StyleSheet, View } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 
 import { useColors } from "@/hooks/useColors";
 
-function NativeTabLayout() {
-  return (
-    <NativeTabs>
-      <NativeTabs.Trigger name="index">
-        <Icon sf={{ default: "house", selected: "house.fill" }} />
-        <Label>Ana Sayfa</Label>
-      </NativeTabs.Trigger>
-      <NativeTabs.Trigger name="hayatagi">
-        <Icon sf={{ default: "heart", selected: "heart.fill" }} />
-        <Label>HayatAğı</Label>
-      </NativeTabs.Trigger>
-      <NativeTabs.Trigger name="kesfet">
-        <Icon sf={{ default: "scope", selected: "scope" }} />
-        <Label>Keşfet</Label>
-      </NativeTabs.Trigger>
-      <NativeTabs.Trigger name="sohbet">
-        <Icon sf={{ default: "bubble.left", selected: "bubble.left.fill" }} />
-        <Label>AI Sohbet</Label>
-      </NativeTabs.Trigger>
-      <NativeTabs.Trigger name="profil">
-        <Icon sf={{ default: "person", selected: "person.fill" }} />
-        <Label>Profil</Label>
-      </NativeTabs.Trigger>
-    </NativeTabs>
-  );
-}
-
-function ClassicTabLayout() {
+export default function TabLayout() {
   const colors = useColors();
-  const colorScheme = useColorScheme();
   const insets = useSafeAreaInsets();
-  const isDark = colorScheme === "dark" || true;
   const isIOS = Platform.OS === "ios";
   const isWeb = Platform.OS === "web";
 
   return (
     <Tabs
       screenOptions={{
+        headerShown: false,
         tabBarActiveTintColor: colors.primary,
         tabBarInactiveTintColor: colors.mutedForeground,
-        headerShown: false,
+        tabBarHideOnKeyboard: true,
         tabBarStyle: {
           position: "absolute",
-          backgroundColor: isIOS ? "transparent" : colors.card,
-          borderTopWidth: 1,
-          borderTopColor: colors.border,
+          backgroundColor: "transparent",
+          borderTopWidth: 0,
           elevation: 0,
-          paddingBottom: isWeb ? 8 : insets.bottom,
-          height: isWeb ? 84 : 60 + insets.bottom,
+          shadowOpacity: 0,
+          paddingTop: 4,
+          paddingBottom: isWeb ? 4 : Math.max(insets.bottom - 4, 4),
+          height: isWeb ? 68 : 52 + insets.bottom,
         },
-        tabBarBackground: () =>
-          isIOS ? (
-            <BlurView intensity={80} tint="dark" style={StyleSheet.absoluteFill} />
-          ) : (
-            <View style={[StyleSheet.absoluteFill, { backgroundColor: colors.card, borderTopWidth: 1, borderTopColor: colors.border }]} />
-          ),
-        tabBarLabelStyle: { fontFamily: "Inter_500Medium", fontSize: 10 },
+        tabBarBackground: () => (
+          <View style={StyleSheet.absoluteFill}>
+            <LinearGradient
+              colors={
+                isIOS
+                  ? ["rgba(8,13,24,0.72)", "rgba(17,24,39,0.86)", "rgba(30,41,59,0.96)"]
+                  : ["#050816", "#0F172A", "#172554"]
+              }
+              start={{ x: 0, y: 0 }}
+              end={{ x: 1, y: 1 }}
+              style={StyleSheet.absoluteFill}
+            />
+            <View
+              style={[
+                StyleSheet.absoluteFill,
+                {
+                  borderTopWidth: 1,
+                  borderTopColor: "rgba(255,255,255,0.08)",
+                },
+              ]}
+            />
+          </View>
+        ),
+        tabBarLabelStyle: {
+          fontFamily: "Inter_500Medium",
+          fontSize: 9,
+          marginTop: -2,
+        },
       }}
     >
       <Tabs.Screen
         name="index"
         options={{
           title: "Ana Sayfa",
-          tabBarIcon: ({ color }) =>
-            isIOS ? <SymbolView name="house" tintColor={color} size={22} /> : <Feather name="home" size={22} color={color} />,
+          tabBarIcon: ({ color }) => <Feather name="home" size={20} color={color} />,
         }}
       />
-      <Tabs.Screen
-        name="hayatagi"
-        options={{
-          title: "HayatAğı",
-          tabBarIcon: ({ color }) =>
-            isIOS ? <SymbolView name="heart" tintColor={color} size={22} /> : <Feather name="heart" size={22} color={color} />,
-        }}
-      />
+
       <Tabs.Screen
         name="kesfet"
         options={{
           title: "Keşfet",
-          tabBarIcon: ({ color }) =>
-            isIOS ? <SymbolView name="scope" tintColor={color} size={22} /> : <Feather name="compass" size={22} color={color} />,
+          tabBarIcon: ({ color }) => <Feather name="search" size={20} color={color} />,
         }}
       />
-      <Tabs.Screen
-        name="sohbet"
-        options={{
-          title: "AI Sohbet",
-          tabBarIcon: ({ color }) =>
-            isIOS ? <SymbolView name="bubble.left" tintColor={color} size={22} /> : <Feather name="message-circle" size={22} color={color} />,
-        }}
-      />
+
       <Tabs.Screen
         name="profil"
         options={{
           title: "Profil",
-          tabBarIcon: ({ color }) =>
-            isIOS ? <SymbolView name="person" tintColor={color} size={22} /> : <Feather name="user" size={22} color={color} />,
+          tabBarIcon: ({ color }) => <Feather name="user" size={20} color={color} />,
         }}
       />
+
+      <Tabs.Screen name="atlas" options={{ href: null }} />
+      <Tabs.Screen name="missions" options={{ href: null }} />
+      <Tabs.Screen name="sohbet" options={{ href: null }} />
+      <Tabs.Screen name="hayatagi" options={{ href: null }} />
     </Tabs>
   );
-}
-
-export default function TabLayout() {
-  if (isLiquidGlassAvailable()) {
-    return <NativeTabLayout />;
-  }
-  return <ClassicTabLayout />;
 }
