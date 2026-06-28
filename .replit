@@ -65,4 +65,4 @@ externalPort = 3001
 EXPO_PUBLIC_NASA_API_KEY = "2WkZpDe6vPf9N5OHceramFpvJ1us7K5nZMXXdtEw"
 
 [nix]
-packages = ["tree", "nano", "watchman"]
+packages = ["tree", "nano", "watchman", "zulu8"]
