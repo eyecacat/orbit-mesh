@@ -1,17 +1,11 @@
 /**
- * Standalone production server for Expo static builds.
- *
- * Serves the output of build.js (static-build/) with two special routes:
- * - GET / or /manifest with expo-platform header → platform manifest JSON
- * - GET / without expo-platform → landing page HTML
- * Everything else falls through to static file serving from ./static-build/.
- *
- * Zero external dependencies — uses only Node.js built-ins (http, fs, path).
+ * Standalone production server for Expo static builds with API Proxy.
  */
 
 const http = require("http");
 const fs = require("fs");
 const path = require("path");
+const https = require("https"); // Dış API'lere bağlanmak için eklendi
 
 const STATIC_ROOT = path.resolve(__dirname, "..", "static-build");
 const TEMPLATE_PATH = path.resolve(__dirname, "templates", "landing-page.html");
@@ -47,15 +41,11 @@ function getAppName() {
 
 function serveManifest(platform, res) {
   const manifestPath = path.join(STATIC_ROOT, platform, "manifest.json");
-
   if (!fs.existsSync(manifestPath)) {
     res.writeHead(404, { "content-type": "application/json" });
-    res.end(
-      JSON.stringify({ error: `Manifest not found for platform: ${platform}` }),
-    );
+    res.end(JSON.stringify({ error: `Manifest not found for platform: ${platform}` }));
     return;
   }
-
   const manifest = fs.readFileSync(manifestPath, "utf-8");
   res.writeHead(200, {
     "content-type": "application/json",
@@ -115,12 +105,100 @@ const server = http.createServer((req, res) => {
     pathname = pathname.slice(basePath.length) || "/";
   }
 
+  // ── PROXY CORS AYARLARI (APK'NIN BAĞLANABİLMESİ İÇİN ŞART) ──
+  res.setHeader("Access-Control-Allow-Origin", "*");
+  res.setHeader("Access-Control-Allow-Methods", "GET, POST, OPTIONS");
+  res.setHeader("Access-Control-Allow-Headers", "Content-Type, Authorization");
+
+  if (req.method === "OPTIONS") {
+    res.writeHead(204);
+    res.end();
+    return;
+  }
+
+  // ── 1. OPENROUTER AI PROXY ENDPOINT'İ ──
+  if (pathname === "/api/chat" && req.method === "POST") {
+    let body = "";
+    req.on("data", chunk => { body += chunk; });
+    req.on("end", () => {
+      try {
+        const parsedData = JSON.parse(body);
+
+        // Replit Secrets'taki tam ismiyle anahtarı sunucudan güvenle okuyoruz
+        const apiKey = process.env.EXPO_PUBLIC_OPENROUTER_API_KEY; 
+
+        if (!apiKey) {
+          res.writeHead(500, { "Content-Type": "application/json" });
+          return res.end(JSON.stringify({ error: "Server API Key bulunamadi!" }));
+        }
+
+        const openRouterReq = https.request({
+          hostname: "openrouter.ai",
+          path: "/api/v1/chat/completions",
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+            "Authorization": `Bearer ${apiKey}`,
+            "HTTP-Referer": "https://orbit-mesh.replit.app",
+            "X-Title": "ORBIT-MESH"
+          }
+        }, (apiRes) => {
+          res.writeHead(apiRes.statusCode, { "Content-Type": "application/json" });
+          apiRes.pipe(res);
+        });
+
+        openRouterReq.on("error", (e) => {
+          res.writeHead(500, { "Content-Type": "application/json" });
+          res.end(JSON.stringify({ error: "AI proxy sunucu hatası", details: e.message }));
+        });
+
+        // Yapay zekaya jüriye özel tasarladığımız sistem promptunu da burada enjekte ediyoruz:
+        const systemPrompt = {
+          role: "system",
+          content: "Sen ORBIT-MESH'in yapay zeka asistanısın. Türkçe yanıt ver. Astronomi, uzay bilimi, Deneyap Kart, BLE ağları, VLF sinyalleri, jeomanyetik fırtınalar ve güvenlik ağları konularında bilgili ve yardımcısın. ORBIT-MESH, öğrenci tabanlı bir astronomi gözlem ve iletişim ağı platformudur. Cevaplarını kısa, açık ve bilimsel tut."
+        };
+
+        const finalPayload = JSON.stringify({
+          model: "google/gemini-2.0-flash", // Hızlı ve ücretsiz havuz desteği için ideal
+          messages: [systemPrompt, ...(parsedData.messages || [])]
+        });
+
+        openRouterReq.write(finalPayload);
+        openRouterReq.end();
+      } catch (err) {
+        res.writeHead(400, { "Content-Type": "application/json" });
+        res.end(JSON.stringify({ error: "Gecersiz JSON verisi" }));
+      }
+    });
+    return;
+  }
+
+  // ── 2. NASA DONKI API PROXY ENDPOINT'İ ──
+  if (pathname === "/api/nasa" && req.method === "GET") {
+    const start = url.searchParams.get("startDate") || "";
+    const end = url.searchParams.get("endDate") || "";
+
+    // Replit Secrets'a EXPO_PUBLIC_NASA_API_KEY adıyla NASA keyini eklemeyi unutma!
+    const apiKey = process.env.EXPO_PUBLIC_NASA_API_KEY || "DEMO_KEY";
+
+    const nasaApiUrl = `https://api.nasa.gov/DONKI/FLR?startDate=${start}&endDate=${end}&api_key=${apiKey}`;
+
+    https.get(nasaApiUrl, (apiRes) => {
+      res.writeHead(apiRes.statusCode, { "Content-Type": "application/json" });
+      apiRes.pipe(res);
+    }).on("error", (e) => {
+      res.writeHead(500, { "Content-Type": "application/json" });
+      res.end(JSON.stringify({ error: "NASA proxy sunucu hatası", details: e.message }));
+    });
+    return;
+  }
+
+  // ── STANDART EXPO STATIK DOSYA SERVISI ──
   if (pathname === "/" || pathname === "/manifest") {
     const platform = req.headers["expo-platform"];
     if (platform === "ios" || platform === "android") {
       return serveManifest(platform, res);
     }
-
     if (pathname === "/") {
       return serveLandingPage(req, res, landingPageTemplate, appName);
     }
@@ -131,5 +209,5 @@ const server = http.createServer((req, res) => {
 
 const port = parseInt(process.env.PORT || "3000", 10);
 server.listen(port, "0.0.0.0", () => {
-  console.log(`Serving static Expo build on port ${port}`);
+  console.log(`Serving static Expo build with secure Proxies on port ${port}`);
 });

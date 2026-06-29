@@ -35,7 +35,11 @@ export default function TabLayout() {
             <LinearGradient
               colors={
                 isIOS
-                  ? ["rgba(8,13,24,0.72)", "rgba(17,24,39,0.86)", "rgba(30,41,59,0.96)"]
+                  ? [
+                      "rgba(8,13,24,0.72)",
+                      "rgba(17,24,39,0.86)",
+                      "rgba(30,41,59,0.96)",
+                    ]
                   : ["#050816", "#0F172A", "#172554"]
               }
               start={{ x: 0, y: 0 }}
@@ -60,30 +64,51 @@ export default function TabLayout() {
         },
       }}
     >
+      {/* 1. Ana Ekran */}
       <Tabs.Screen
         name="index"
         options={{
           title: "Ana Sayfa",
-          tabBarIcon: ({ color }) => <Feather name="home" size={20} color={color} />,
+          tabBarIcon: ({ color }) => (
+            <Feather name="home" size={20} color={color} />
+          ),
         }}
       />
 
+      {/* 2. Bilimsel Analiz (Yeni Ekran) - Jürinin göreceği profesyonel mod */}
+      <Tabs.Screen
+        name="diagnostics"
+        options={{
+          title: "Analiz",
+          tabBarIcon: ({ color }) => (
+            <Feather name="activity" size={20} color={color} />
+          ),
+        }}
+      />
+
+      {/* 3. Keşfet */}
       <Tabs.Screen
         name="kesfet"
         options={{
           title: "Keşfet",
-          tabBarIcon: ({ color }) => <Feather name="search" size={20} color={color} />,
+          tabBarIcon: ({ color }) => (
+            <Feather name="search" size={20} color={color} />
+          ),
         }}
       />
 
+      {/* 4. Profil */}
       <Tabs.Screen
         name="profil"
         options={{
           title: "Profil",
-          tabBarIcon: ({ color }) => <Feather name="user" size={20} color={color} />,
+          tabBarIcon: ({ color }) => (
+            <Feather name="user" size={20} color={color} />
+          ),
         }}
       />
 
+      {/* Gizli Rotalar */}
       <Tabs.Screen name="atlas" options={{ href: null }} />
       <Tabs.Screen name="missions" options={{ href: null }} />
       <Tabs.Screen name="sohbet" options={{ href: null }} />

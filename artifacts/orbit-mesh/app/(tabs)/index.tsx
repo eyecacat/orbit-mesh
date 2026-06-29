@@ -13,10 +13,11 @@ import {
 } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 
-import { NASA_API_KEY } from "@/lib/env";
 import { useAuth } from "@/context/AuthContext";
 import { useSafety } from "@/context/SafetyContext";
 import { useColors } from "@/hooks/useColors";
+// Yeni oluşturduğumuz merkezi API istemcisini içeri aktarıyoruz
+import apiClient from "../../services/apiClient"; 
 
 interface SolarFlare {
   flrID: string;
@@ -194,31 +195,32 @@ export default function HomeScreen() {
         .toISOString()
         .split("T")[0];
 
+      // apiClient.get ile merkezi yönetime geçiş yapıldı.
+      // Interceptor sayesinde api_key parametresi arkada otomatik eklenecek.
       const [flaresRes, cmesRes] = await Promise.all([
-        fetch(
-          `https://api.nasa.gov/DONKI/FLR?startDate=${start}&endDate=${end}&api_key=${NASA_API_KEY}`
+        apiClient.get(
+          `https://api.nasa.gov/DONKI/FLR?startDate=${start}&endDate=${end}`
         ),
-        fetch(
-          `https://api.nasa.gov/DONKI/CME?startDate=${start}&endDate=${end}&api_key=${NASA_API_KEY}`
+        apiClient.get(
+          `https://api.nasa.gov/DONKI/CME?startDate=${start}&endDate=${end}`
         ),
       ]);
 
-      if (flaresRes.ok) {
-        const flaresJson = await flaresRes.json();
-        setFlares(Array.isArray(flaresJson) ? flaresJson.slice(0, 3) : []);
+      if (flaresRes.status === 200 && Array.isArray(flaresRes.data)) {
+        setFlares(flaresRes.data.slice(0, 3));
       } else {
         setFlares([]);
       }
 
-      if (cmesRes.ok) {
-        const cmesJson = await cmesRes.json();
-        setCmes(Array.isArray(cmesJson) ? cmesJson.slice(0, 2) : []);
+      if (cmesRes.status === 200 && Array.isArray(cmesRes.data)) {
+        setCmes(cmesRes.data.slice(0, 2));
       } else {
         setCmes([]);
       }
 
       setNasaError(false);
-    } catch {
+    } catch (error) {
+      console.error("NASA DONKI API Bağlantı Hatası:", error);
       setNasaError(true);
       setFlares([]);
       setCmes([]);
