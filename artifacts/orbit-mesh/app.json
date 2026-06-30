@@ -41,7 +41,7 @@
       [
         "expo-router",
         {
-          "origin": "https://orbit-mesh.vercel.app"
+          "origin": "https://orbit-eta-orpin.vercel.app"
         }
       ],
       "expo-font",
@@ -51,16 +51,17 @@
       "typedRoutes": true,
       "reactCompiler": true
     },
-    "extra": {
-      "eas": {
-        "projectId": "3d5f0421-feaa-457f-a57f-417e7bb9f46a"
-      }
-    },
     "runtimeVersion": {
       "policy": "appVersion"
     },
-    "updates": {
-      "url": "https://u.expo.dev/3d5f0421-feaa-457f-a57f-417e7bb9f46a"
-    }
+    "extra": {
+      "router": {
+        "origin": "https://orbit-eta-orpin.vercel.app"
+      },
+      "eas": {
+        "projectId": "dbd28b8a-fb3f-4ae8-98ef-e08234ebe1ff"
+      }
+    },
+    "owner": "eyecacat"
   }
 }
