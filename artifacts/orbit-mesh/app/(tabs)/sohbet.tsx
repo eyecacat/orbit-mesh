@@ -1,4 +1,4 @@
-import { OPENROUTER_API_KEY } from "@/lib/env";
+import { BACKEND_URL } from "@/lib/env";
 import { Feather } from "@expo/vector-icons";
 import * as Haptics from "expo-haptics";
 import React, { useRef, useState } from "react";
@@ -40,16 +40,11 @@ export default function SohbetScreen() {
   const [loading, setLoading] = useState(false);
 
   const flatRef = useRef<FlatList<Message>>(null);
-console.log("SEND MESSAGE CALLED");
+
   async function sendMessage() {
     const text = input.trim();
 
     if (!text || loading) return;
-
-    console.log(
-      "OPENROUTER:",
-      OPENROUTER_API_KEY ? "FOUND" : "MISSING"
-    );
 
     Haptics.impactAsync(
       Haptics.ImpactFeedbackStyle.Light
@@ -76,17 +71,12 @@ console.log("SEND MESSAGE CALLED");
           content: m.content,
         }));
 
-      console.log("KEY LENGTH:", OPENROUTER_API_KEY.length);
-      console.log("KEY START:", OPENROUTER_API_KEY.slice(0, 10));
       const response = await fetch(
-        "https://openrouter.ai/api/v1/chat/completions",
+        `${BACKEND_URL}/api/openrouter`,
         {
           method: "POST",
           headers: {
-            Authorization: `Bearer ${OPENROUTER_API_KEY}`,
             "Content-Type": "application/json",
-            "HTTP-Referer": "https://replit.com",
-            "X-Title": "ORBIT-MESH",
           },
           body: JSON.stringify({
             model: "openai/gpt-4o-mini",
@@ -98,11 +88,10 @@ console.log("SEND MESSAGE CALLED");
 
       const data = await response.json();
 
-      console.log("OPENROUTER RESPONSE:", data);
-
       if (!response.ok) {
         throw new Error(
-          data?.error?.message ||
+          data?.error ||
+            data?.error?.message ||
             `HTTP ${response.status}`
         );
       }

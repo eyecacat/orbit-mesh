@@ -16,8 +16,7 @@ import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { useAuth } from "@/context/AuthContext";
 import { useSafety } from "@/context/SafetyContext";
 import { useColors } from "@/hooks/useColors";
-// Yeni oluşturduğumuz merkezi API istemcisini içeri aktarıyoruz
-import apiClient from "../../services/apiClient"; 
+import { BACKEND_URL } from "@/lib/env";
 
 interface SolarFlare {
   flrID: string;
@@ -195,25 +194,25 @@ export default function HomeScreen() {
         .toISOString()
         .split("T")[0];
 
-      // apiClient.get ile merkezi yönetime geçiş yapıldı.
-      // Interceptor sayesinde api_key parametresi arkada otomatik eklenecek.
+      // Kendi backend proxy'mize istek atiyoruz; NASA_API_KEY sadece
+      // sunucu tarafinda (app/api/nasa+api.ts) kullaniliyor, client'a
+      // hic gelmiyor.
       const [flaresRes, cmesRes] = await Promise.all([
-        apiClient.get(
-          `https://api.nasa.gov/DONKI/FLR?startDate=${start}&endDate=${end}`
-        ),
-        apiClient.get(
-          `https://api.nasa.gov/DONKI/CME?startDate=${start}&endDate=${end}`
-        ),
+        fetch(`${BACKEND_URL}/api/nasa?type=FLR&start=${start}&end=${end}`),
+        fetch(`${BACKEND_URL}/api/nasa?type=CME&start=${start}&end=${end}`),
       ]);
 
-      if (flaresRes.status === 200 && Array.isArray(flaresRes.data)) {
-        setFlares(flaresRes.data.slice(0, 3));
+      const flaresData = flaresRes.ok ? await flaresRes.json() : null;
+      const cmesData = cmesRes.ok ? await cmesRes.json() : null;
+
+      if (Array.isArray(flaresData)) {
+        setFlares(flaresData.slice(0, 3));
       } else {
         setFlares([]);
       }
 
-      if (cmesRes.status === 200 && Array.isArray(cmesRes.data)) {
-        setCmes(cmesRes.data.slice(0, 2));
+      if (Array.isArray(cmesData)) {
+        setCmes(cmesData.slice(0, 2));
       } else {
         setCmes([]);
       }

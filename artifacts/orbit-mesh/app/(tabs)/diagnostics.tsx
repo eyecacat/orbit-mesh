@@ -1,122 +1,123 @@
 import React, { useState, useEffect } from 'react';
 import { View, Text, StyleSheet, ScrollView, Dimensions, Platform } from 'react-native';
-import { Magnetometer } from 'expo-sensors';
+import { Magnetometer, Accelerometer } from 'expo-sensors';
 import { Feather } from '@expo/vector-icons';
 import { LineChart } from "react-native-chart-kit";
 import AsyncStorage from '@react-native-async-storage/async-storage';
 
+import { useBle } from "@/context/BleContext";
+
 const screenWidth = Dimensions.get("window").width - 40;
 
 export default function DiagnosticsScreen() {
-  // 1. Durum (State) Yönetimi
+  // ── Telefonun kendi sensörleri (manyetometre + ivmeölçer) ──────────────
+  // Kullanıcı tarafından istenen "manyetik ve hareket telefonun içindeki
+  // jiroskop/ivmeölçer ile ölçülsün" özelliği. ESP32'den gelen veriden
+  // BAĞIMSIZ, telefonun kendi donanımından okunur.
   const [magnetoData, setMagnetoData] = useState({ x: 0, y: 0, z: 0 });
+  const [accelData, setAccelData] = useState({ x: 0, y: 0, z: 0 });
   const [dataHistory, setDataHistory] = useState<number[]>([0, 0, 0, 0, 0, 0]);
   const [savedCount, setSavedCount] = useState(0);
 
-  const [diagnostics, setDiagnostics] = useState({
-    adc: 'TESTING',
-    ble: 'TESTING',
-    noise: 'TESTING',
-    vlfPin: 'TESTING'
-  });
-  const [confidenceScore, setConfidenceScore] = useState(0);
+  // ── Gerçek BLE/firmware bağlantı durumu ─────────────────────────────────
+  // ÖNEMLİ: Bu ekran eskiden isBleActive=true ve currentVlfPin="D8/GPIO15"
+  // gibi SABİT KODLANMIŞ (hardcoded) sahte değerlerle "CONFLICT" hatası
+  // üretiyordu — gerçek donanımla hiçbir ilgisi yoktu. Artık gerçek
+  // BleContext üzerinden cihazın GERÇEKTEN bağlı olup olmadığını,
+  // firmware'in gönderdiği gerçek input_fault/anomaly bayraklarını okuyor.
+  const { connectedDevice, latestTelemetry, anomalyScore, consensus } = useBle();
+  const isBleConnected = !!connectedDevice;
+  const hasLiveData = !!latestTelemetry;
 
-  // 2. Çevrimdışı Veri Tamponu (Offline Data Buffer)
-  const saveMeasurement = async (data: { x: number, y: number, z: number }) => {
+  const saveMeasurement = async (mag: { x: number; y: number; z: number }, accel: { x: number; y: number; z: number }) => {
     try {
       const timestamp = new Date().toISOString();
-      const newEntry = { timestamp, ...data };
+      const newEntry = {
+        timestamp,
+        mag,
+        accel,
+        ble_connected: isBleConnected,
+        vlf_hz: latestTelemetry?.vlf_hz ?? null,
+        anomaly: latestTelemetry?.anomaly ?? null,
+      };
 
       const existingData = await AsyncStorage.getItem('orbit_mesh_observations');
       const logs = existingData ? JSON.parse(existingData) : [];
 
       logs.push(newEntry);
-
-      // Cihazı şişirmemek için son 100 kaydı tut
-      if (logs.length > 100) logs.shift(); 
+      if (logs.length > 100) logs.shift();
 
       await AsyncStorage.setItem('orbit_mesh_observations', JSON.stringify(logs));
-      setSavedCount(logs.length); // Ekranda kaç veri biriktiğini göstermek için
+      setSavedCount(logs.length);
     } catch (e) {
       console.error("Veri kayıt hatası:", e);
     }
   };
 
-  // 3. Donanım ve Güvenilirlik Testi (Self-Test)
   useEffect(() => {
-    const runSelfTest = setTimeout(() => {
-      const isBleActive = true; 
-      const currentVlfPin = "D8/GPIO15";
-
-      let adcStatus = 'OK';
-      let vlfPinStatus = 'OK';
-      let penalty = 0;
-
-      // Çakışma denetimi
-      if (isBleActive && currentVlfPin === "D8/GPIO15") {
-        adcStatus = 'CONFLICT';
-        vlfPinStatus = 'ERROR';
-        penalty += 45;
-      }
-
-      setDiagnostics({
-        adc: adcStatus,
-        ble: isBleActive ? 'ACTIVE' : 'IDLE',
-        noise: 'NORMAL',
-        vlfPin: vlfPinStatus
-      });
-
-      setConfidenceScore(Math.max(0, 98 - penalty));
-    }, 1500);
-
-    // Açılışta mevcut veri sayısını çek
     AsyncStorage.getItem('orbit_mesh_observations').then(data => {
       if (data) setSavedCount(JSON.parse(data).length);
     });
-
-    return () => clearTimeout(runSelfTest);
   }, []);
 
-  // 4. Sensör Dinleme ve Grafik Güncelleme
   useEffect(() => {
-    Magnetometer.setUpdateInterval(1000); // Saniyede 1 kez oku (Batarya dostu)
+    Magnetometer.setUpdateInterval(1000);
+    Accelerometer.setUpdateInterval(1000);
 
-    const subscription = Magnetometer.addListener(result => {
+    const magSub = Magnetometer.addListener(result => {
       setMagnetoData(result);
-
-      // Grafiği kaydır
       const zValue = parseFloat(result.z.toFixed(1));
       setDataHistory(prev => {
         const newHistory = [...prev.slice(1), zValue];
-        return newHistory.some(isNaN) ? [0, 0, 0, 0, 0, 0] : newHistory; // NaN koruması
+        return newHistory.some(isNaN) ? [0, 0, 0, 0, 0, 0] : newHistory;
       });
-
-      // Her yeni veriyi arka planda depola
-      saveMeasurement(result);
     });
 
-    return () => subscription.remove();
+    const accelSub = Accelerometer.addListener(result => {
+      setAccelData(result);
+    });
+
+    return () => {
+      magSub.remove();
+      accelSub.remove();
+    };
   }, []);
+
+  useEffect(() => {
+    saveMeasurement(magnetoData, accelData);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [magnetoData.x, magnetoData.y, magnetoData.z]);
+
+  // ── Gerçek Donanım Sağlık Durumu (firmware'den) ─────────────────────────
+  const inputFault = (latestTelemetry as any)?.input_fault ?? false;
+  const mainsNoise = (latestTelemetry as any)?.mains_noise ?? false;
+  const confidenceScore = !isBleConnected
+    ? 0
+    : !hasLiveData
+    ? 40
+    : inputFault
+    ? 15
+    : mainsNoise
+    ? 60
+    : Math.round(100 - (anomalyScore?.total ?? 0) * 0.3);
 
   return (
     <ScrollView style={styles.container} showsVerticalScrollIndicator={false}>
       <Text style={styles.title}>ORBIT-MESH Analiz Paneli</Text>
 
-      {/* Çevrimdışı Bellek Durumu */}
       <View style={styles.statusRow}>
         <View style={styles.badge}>
           <Feather name="database" size={14} color="#00E5B0" />
           <Text style={styles.badgeText}>Yerel Bellek: {savedCount}/100</Text>
         </View>
         <View style={styles.badge}>
-          <Feather name="check-circle" size={14} color="#00E5B0" />
+          <Feather name="check-circle" size={14} color={confidenceScore > 70 ? "#00E5B0" : confidenceScore > 40 ? "#FBBF24" : "#FF6B6B"} />
           <Text style={styles.badgeText}>Güven: %{confidenceScore}</Text>
         </View>
       </View>
 
-      {/* Canlı Grafik */}
       <View style={styles.card}>
-        <Text style={styles.cardTitle}>Manyetik Alan Trendi (Z Ekseni)</Text>
+        <Text style={styles.cardTitle}>Telefon Manyetometre — Z Ekseni</Text>
         <LineChart
           data={{
             labels: ["-5s", "-4s", "-3s", "-2s", "-1s", "Şimdi"],
@@ -138,35 +139,60 @@ export default function DiagnosticsScreen() {
           bezier
         />
         <Text style={styles.sensorText}>Güncel Z: {magnetoData.z.toFixed(2)} µT</Text>
+        <Text style={styles.sensorSubText}>
+          İvmeölçer (X/Y/Z): {accelData.x.toFixed(2)} / {accelData.y.toFixed(2)} / {accelData.z.toFixed(2)} g
+        </Text>
       </View>
 
-      {/* Donanım Sağlık Testi (Self-Test) */}
       <View style={styles.card}>
-        <Text style={styles.cardTitle}>Donanım Sağlık Testi (Self-Test)</Text>
+        <Text style={styles.cardTitle}>Donanım Sağlık Testi (ESP32 Self-Test)</Text>
         <View style={styles.row}>
-          <Text style={styles.label}>ADC2 Stabilitesi:</Text>
-          <Text style={[styles.value, diagnostics.adc === 'CONFLICT' && styles.error]}>{diagnostics.adc}</Text>
+          <Text style={styles.label}>BLE Bağlantısı:</Text>
+          <Text style={[styles.value, !isBleConnected && styles.error]}>
+            {isBleConnected ? `BAĞLI (${connectedDevice!.name ?? connectedDevice!.id})` : "BAĞLI DEĞİL"}
+          </Text>
         </View>
         <View style={styles.row}>
-          <Text style={styles.label}>VLF Örnekleme Pini (D8):</Text>
-          <Text style={[styles.value, diagnostics.vlfPin === 'ERROR' && styles.error]}>{diagnostics.vlfPin}</Text>
+          <Text style={styles.label}>Telemetri Akışı:</Text>
+          <Text style={[styles.value, !hasLiveData && styles.warn]}>
+            {hasLiveData ? "AKTİF" : "VERİ BEKLENİYOR"}
+          </Text>
         </View>
         <View style={styles.row}>
-          <Text style={styles.label}>BLE Durumu:</Text>
-          <Text style={styles.value}>{diagnostics.ble}</Text>
+          <Text style={styles.label}>VLF Giriş Sinyali:</Text>
+          <Text style={[styles.value, inputFault && styles.error]}>
+            {!hasLiveData ? "—" : inputFault ? "ARIZA (input_fault)" : "STABİL"}
+          </Text>
+        </View>
+        <View style={styles.row}>
+          <Text style={styles.label}>Şebeke Gürültüsü (50Hz):</Text>
+          <Text style={[styles.value, mainsNoise && styles.warn]}>
+            {!hasLiveData ? "—" : mainsNoise ? "BASKIN" : "NORMAL"}
+          </Text>
+        </View>
+        <View style={styles.row}>
+          <Text style={styles.label}>Mesh Consensus:</Text>
+          <Text style={[styles.value, consensus.status !== "Normal" && styles.warn]}>{consensus.status}</Text>
         </View>
 
-        {diagnostics.adc === 'CONFLICT' && (
+        {inputFault && (
           <View style={styles.alertBox}>
             <Feather name="alert-triangle" size={16} color="#FF6B6B" />
             <Text style={styles.alertText}>
-              Kritik Uyarı: BLE aktifken ADC2 kanalları paylaşıldığı için D8/GPIO15 pininden güvenilir VLF verisi okunamıyor.
+              VLF giriş sinyalinde kararsızlık tespit edildi. Anten/OP-AMP devre bağlantısını kontrol edin.
+            </Text>
+          </View>
+        )}
+        {!isBleConnected && (
+          <View style={[styles.alertBox, { backgroundColor: "#1e2a3a" }]}>
+            <Feather name="bluetooth" size={16} color="#38bdf8" />
+            <Text style={[styles.alertText, { color: "#38bdf8" }]}>
+              ORBIT-MESH cihazına bağlı değilsiniz. BLE Ağı ekranından bağlanın.
             </Text>
           </View>
         )}
       </View>
 
-      {/* Alt boşluk (Tab bar altında kalmaması için) */}
       <View style={{ height: 80 }} />
     </ScrollView>
   );
@@ -182,10 +208,12 @@ const styles = StyleSheet.create({
   cardTitle: { fontSize: 15, fontWeight: '600', color: '#38bdf8', marginBottom: 16 },
   chartStyle: { marginVertical: 8, borderRadius: 12, marginLeft: -10 },
   sensorText: { color: '#00E5B0', fontSize: 18, fontFamily: Platform.OS === 'ios' ? 'Menlo' : 'monospace', textAlign: 'center', marginTop: 10, fontWeight: 'bold' },
+  sensorSubText: { color: '#94a3b8', fontSize: 12, textAlign: 'center', marginTop: 4 },
   row: { flexDirection: 'row', justifyContent: 'space-between', marginBottom: 12 },
   label: { color: '#cbd5e1', fontSize: 14 },
   value: { color: '#00E5B0', fontSize: 14, fontWeight: 'bold' },
   error: { color: '#FF6B6B' },
+  warn: { color: '#FBBF24' },
   alertBox: { flexDirection: 'row', backgroundColor: '#451a20', padding: 12, borderRadius: 8, marginTop: 12, alignItems: 'center' },
   alertText: { color: '#FF6B6B', fontSize: 12, marginLeft: 8, flex: 1, lineHeight: 18 }
 });
