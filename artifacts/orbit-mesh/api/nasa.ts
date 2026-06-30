@@ -1,13 +1,12 @@
 // ============================================================
 // ORBIT-MESH — NASA DONKI Proxy (Vercel Serverless Function)
 // ------------------------------------------------------------
-// Ayni mantik: NASA_API_KEY, Vercel Dashboard'da EXPO_PUBLIC_
-// ONEKI OLMADAN tanimlanir. Bu fonksiyon Expo'nun build modundan
-// bagimsiz olarak Vercel tarafindan otomatik tanindigi icin
-// garanti calisir.
+// Geliştirilmiş Versiyon: Hem 'start/end' hem de 'startDate/endDate'
+// parametrelerini esnek bir şekilde yakalar. Böylece mobil uygulamada
+// hangi isimlendirme kullanılırsa kullanılsın backend çökmez.
 //
-// Kullanim: GET /api/nasa?type=FLR&start=YYYY-MM-DD&end=YYYY-MM-DD
-// type: FLR | GST | CME
+// Kullanım: GET /api/nasa?type=FLR&start=YYYY-MM-DD&end=YYYY-MM-DD
+// Veya:    GET /api/nasa?type=FLR&startDate=YYYY-MM-DD&endDate=YYYY-MM-DD
 // ============================================================
 
 export default async function handler(req: any, res: any) {
@@ -23,18 +22,25 @@ export default async function handler(req: any, res: any) {
     return;
   }
 
-  const { type, start, end } = req.query ?? {};
+  // KRİTİK DÜZELTME: Hem kısa hem de uzun parametre adlarını yedekli (fallback) olarak kontrol ediyoruz.
+  const type = req.query?.type;
+  const start = req.query?.start || req.query?.startDate;
+  const end = req.query?.end || req.query?.endDate;
 
   if (type !== "FLR" && type !== "GST" && type !== "CME") {
     res.status(400).json({ error: "'type' parametresi FLR, GST veya CME olmali." });
     return;
   }
+
   if (!start || !end) {
-    res.status(400).json({ error: "'start' ve 'end' parametreleri zorunlu." });
+    res.status(400).json({ 
+      error: "Tarih parametreleri eksik! 'start'/'startDate' ve 'end'/'endDate' alanlarından biri zorunludur." 
+    });
     return;
   }
 
   try {
+    // NASA upstream API'sine her halükarda doğru parametre adlarıyla (startDate/endDate) iletiyoruz
     const upstream = await fetch(
       `https://api.nasa.gov/DONKI/${type}?startDate=${start}&endDate=${end}&api_key=${apiKey}`
     );
