@@ -6,7 +6,7 @@
  */
 
 // Çalışan gerçek Vercel backend proxy adresin:
-export const BACKEND_URL = "https://orbit-eta-orpin.vercel.app";
+export const BACKEND_URL = "https://orbit-mesh.vercel.app";
 
 /**
  * Geriye Dönük Uyum Koruması (Fallback)

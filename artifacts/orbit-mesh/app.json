@@ -41,7 +41,7 @@
       [
         "expo-router",
         {
-          "origin": "https://orbit-eta-orpin.vercel.app"
+          "origin": "https://orbit-mesh.vercel.app"
         }
       ],
       "expo-font",
