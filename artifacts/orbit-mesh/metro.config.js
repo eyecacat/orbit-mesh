@@ -6,10 +6,12 @@ const workspaceRoot = path.resolve(projectRoot, '../..'); // Monorepo kök dizin
 
 const config = getDefaultConfig(projectRoot);
 
-// 1. Metro'nun tüm monorepo dosyalarını izlemesini sağla
-config.watchFolders = [workspaceRoot];
+// Monorepo watchFolders — Expo'nun varsayılanlarını KORUYARAK genişlet
+// (= yerine [...spread] ile birleştir, yoksa Expo'nun kendi entry'leri
+// silinir ve "watchFolders does not contain all entries" hatası oluşur)
+config.watchFolders = [...(config.watchFolders ?? []), workspaceRoot];
 
-// 2. Paketlerin çözümleneceği node_modules öncelik sırasını belirle
+// Paketlerin çözümleneceği node_modules öncelik sırası
 config.resolver.nodeModulesPaths = [
   path.resolve(projectRoot, 'node_modules'),
   path.resolve(workspaceRoot, 'node_modules'),
