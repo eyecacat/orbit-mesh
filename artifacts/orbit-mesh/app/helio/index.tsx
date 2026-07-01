@@ -1,4 +1,4 @@
-import { NASA_API_KEY } from "@/lib/env";
+import { BACKEND_URL } from "@/lib/env";
 import { Feather } from "@expo/vector-icons";
 import { router } from "expo-router";
 import React, { useEffect, useState } from "react";
@@ -43,8 +43,8 @@ export default function HelioScreen() {
       const start = new Date(Date.now() - 30 * 24 * 60 * 60 * 1000).toISOString().split("T")[0];
       const end = new Date().toISOString().split("T")[0];
       const [f, g] = await Promise.all([
-        fetch(`https://api.nasa.gov/DONKI/FLR?startDate=${start}&endDate=${end}&api_key=${NASA_API_KEY}`),
-        fetch(`https://api.nasa.gov/DONKI/GST?startDate=${start}&endDate=${end}&api_key=${NASA_API_KEY}`),
+        fetch(`${BACKEND_URL}/api/nasa?type=FLR&start=${start}&end=${end}`),
+        fetch(`${BACKEND_URL}/api/nasa?type=GST&start=${start}&end=${end}`),
       ]);
       if (f.ok) setFlares(await f.json());
       if (g.ok) setGsts(await g.json());
