@@ -1,7 +1,7 @@
 import React, { useState, useEffect, useMemo, useRef } from 'react';
 import { View, Text, StyleSheet, ScrollView, Dimensions, Platform, Pressable, Alert, ActivityIndicator } from 'react-native';
 import { Magnetometer, Accelerometer } from 'expo-sensors';
-import { Feather } from '@react-native-vector-icons/feather';
+import { Feather } from '@expo/vector-icons';
 import { LineChart, BarChart } from "react-native-chart-kit";
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import * as Print from 'expo-print';
