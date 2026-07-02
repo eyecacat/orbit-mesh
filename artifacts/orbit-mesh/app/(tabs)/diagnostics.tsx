@@ -6,7 +6,7 @@ import { LineChart, BarChart } from "react-native-chart-kit";
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import * as Print from 'expo-print';
 import * as Sharing from 'expo-sharing';
-import * as FileSystem from 'expo-file-system';
+import * as FileSystem from 'expo-file-system/legacy';
 
 import { useBle } from "@/context/BleContext";
 import { buildCsv, buildReportHtml, makeObservationId, type ObservationRecord } from "../../utils/reportGenerator";
