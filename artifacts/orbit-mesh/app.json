@@ -3,6 +3,7 @@
     "name": "ORBIT-MESH",
     "slug": "orbit-mesh",
     "version": "1.0.0",
+    "owner": "eyecacat",
     "orientation": "portrait",
     "icon": "./assets/images/icon.png",
     "scheme": "orbit-mesh",
@@ -15,14 +16,10 @@
     },
     "ios": {
       "supportsTablet": false,
-      "infoPlist": {
-        "NSMotionUsageDescription": "Deprem tespiti için ivmeölçer kullanılıyor",
-        "NSLocationWhenInUseUsageDescription": "Acil durum SMS'inde konum gönderebilmek için",
-        "NSLocationAlwaysUsageDescription": "Acil durum durumunda konum paylaşımı için"
-      },
       "bundleIdentifier": "com.orbitmesh.orbitmesh"
     },
     "android": {
+      "package": "com.orbitmesh.orbitmesh",
       "permissions": [
         "android.permission.ACTIVITY_RECOGNITION",
         "android.permission.ACCESS_FINE_LOCATION",
@@ -31,37 +28,12 @@
         "android.permission.BLUETOOTH_CONNECT",
         "android.permission.BLUETOOTH",
         "android.permission.BLUETOOTH_ADMIN"
-      ],
-      "package": "com.orbitmesh.orbitmesh"
-    },
-    "web": {
-      "favicon": "./assets/images/icon.png"
-    },
-    "plugins": [
-      [
-        "expo-router",
-        {
-          "origin": "https://orbit-eta-orpin.vercel.app"
-        }
-      ],
-      "expo-font",
-      "expo-web-browser"
-    ],
-    "experiments": {
-      "typedRoutes": true,
-      "reactCompiler": true
-    },
-    "runtimeVersion": {
-      "policy": "appVersion"
+      ]
     },
     "extra": {
-      "router": {
-        "origin": "https://orbit-eta-orpin.vercel.app"
-      },
       "eas": {
         "projectId": "dbd28b8a-fb3f-4ae8-98ef-e08234ebe1ff"
       }
-    },
-    "owner": "eyecacat"
+    }
   }
 }
