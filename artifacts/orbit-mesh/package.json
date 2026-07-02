@@ -68,5 +68,6 @@
     "react-native": "0.81.5",
     "react-native-ble-plx": "^3.5.1",
     "react-native-chart-kit": "^7.0.1"
-  }
+  },
+  "packageManager": "pnpm@9.15.0"
 }
