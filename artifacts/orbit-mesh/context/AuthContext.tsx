@@ -1,4 +1,5 @@
 import AsyncStorage from "@react-native-async-storage/async-storage";
+import * as Crypto from "expo-crypto";
 import React, { createContext, useContext, useEffect, useState } from "react";
 
 export interface User {
@@ -27,6 +28,11 @@ const AuthContext = createContext<AuthContextValue | null>(null);
 const USERS_KEY = "@orbit-mesh/users";
 const CURRENT_USER_KEY = "@orbit-mesh/current-user";
 
+
+async function hashPassword(password: string): Promise<string> {
+  return await Crypto.digestStringAsync(Crypto.CryptoDigestAlgorithm.SHA256, password + "@orbit-mesh-salt-2026");
+}
+
 export function AuthProvider({ children }: { children: React.ReactNode }) {
   const [user, setUser] = useState<User | null>(null);
   const [loading, setLoading] = useState(true);
@@ -49,7 +55,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     try {
       const usersData = await AsyncStorage.getItem(USERS_KEY);
       const users: Array<User & { password: string }> = usersData ? JSON.parse(usersData) : [];
-      const found = users.find(u => u.email.toLowerCase() === email.toLowerCase() && u.password === password);
+      const found = users.find(u => u.email.toLowerCase() === email.toLowerCase() && u.password === await hashPassword(password));
       if (!found) return { success: false, error: "E-posta veya şifre hatalı" };
       const { password: _, ...safeUser } = found;
       await AsyncStorage.setItem(CURRENT_USER_KEY, JSON.stringify(safeUser));
@@ -71,7 +77,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         id: Date.now().toString() + Math.random().toString(36).substr(2, 9),
         name,
         email,
-        password,
+        password: await hashPassword(password),
         quizScore: 0,
         quizAttempts: 0,
         rank: users.length + 1,

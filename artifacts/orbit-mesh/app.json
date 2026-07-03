@@ -28,7 +28,8 @@
         "android.permission.BLUETOOTH_CONNECT",
         "android.permission.BLUETOOTH",
         "android.permission.BLUETOOTH_ADMIN"
-      ]
+      ],
+      "allowBackup": false
     },
     "extra": {
       "eas": {
