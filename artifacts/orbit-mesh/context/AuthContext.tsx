@@ -35,12 +35,7 @@ async function hashPassword(password: string): Promise<string> {
 }
 
 
-async function hashPassword(password: string): Promise<string> {
-  return await Crypto.digestStringAsync(
-    Crypto.CryptoDigestAlgorithm.SHA256,
-    password + "@orbit-mesh-salt-2026"
-  );
-}
+
 
 export function AuthProvider({ children }: { children: React.ReactNode }) {
   const [user, setUser] = useState<User | null>(null);
