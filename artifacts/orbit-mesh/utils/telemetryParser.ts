@@ -116,6 +116,10 @@ function parseJsonTelemetry(raw: string): NodeTelemetry {
 }
  
 export function parseTelemetry(base64Value: string) {
+  // Güvenlik: 10KB'dan büyük BLE paketleri reddet (normal paket < 1KB)
+  if (base64Value.length > 13000) {
+    return { data: null, raw: "", error: "Paket boyutu aşıldı (max 10KB)" };
+  }
   try {
     const raw = base64ToUtf8(base64Value).trim();
  

@@ -1,4 +1,5 @@
 import AsyncStorage from "@react-native-async-storage/async-storage";
+import * as Crypto from 'expo-crypto';
 import * as Crypto from "expo-crypto";
 import React, { createContext, useContext, useEffect, useState } from "react";
 
@@ -31,6 +32,14 @@ const CURRENT_USER_KEY = "@orbit-mesh/current-user";
 
 async function hashPassword(password: string): Promise<string> {
   return await Crypto.digestStringAsync(Crypto.CryptoDigestAlgorithm.SHA256, password + "@orbit-mesh-salt-2026");
+}
+
+
+async function hashPassword(password: string): Promise<string> {
+  return await Crypto.digestStringAsync(
+    Crypto.CryptoDigestAlgorithm.SHA256,
+    password + "@orbit-mesh-salt-2026"
+  );
 }
 
 export function AuthProvider({ children }: { children: React.ReactNode }) {
