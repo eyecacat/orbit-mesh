@@ -58,7 +58,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     try {
       const usersData = await AsyncStorage.getItem(USERS_KEY);
       const users: Array<User & { password: string }> = usersData ? JSON.parse(usersData) : [];
-      const found = users.find(u => u.email.toLowerCase() === email.toLowerCase() && u.password === await hashPassword(password));
+      const found = users.find(async u => u.email.toLowerCase() === email.toLowerCase() && u.password === await hashPassword(password));
       if (!found) return { success: false, error: "E-posta veya şifre hatalı" };
       const { password: _, ...safeUser } = found;
       await AsyncStorage.setItem(CURRENT_USER_KEY, JSON.stringify(safeUser));
@@ -73,7 +73,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     try {
       const usersData = await AsyncStorage.getItem(USERS_KEY);
       const users: Array<User & { password: string }> = usersData ? JSON.parse(usersData) : [];
-      if (users.find(u => u.email.toLowerCase() === email.toLowerCase())) {
+      if (users.find(async u => u.email.toLowerCase() === email.toLowerCase())) {
         return { success: false, error: "Bu e-posta zaten kayıtlı" };
       }
       const newUser: User & { password: string } = {
