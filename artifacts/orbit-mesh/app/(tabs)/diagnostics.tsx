@@ -2,7 +2,7 @@ import React, { useState, useEffect, useMemo, useRef } from 'react';
 import { View, Text, StyleSheet, ScrollView, Dimensions, Platform, Pressable, Alert, ActivityIndicator } from 'react-native';
 import { Magnetometer, Accelerometer } from 'expo-sensors';
 import { Feather } from '@expo/vector-icons';
-import { LineChart, BarChart } from "react-native-chart-kit";
+import { LineChart } from "react-native-chart-kit";
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import * as Print from 'expo-print';
 import * as Sharing from 'expo-sharing';
@@ -15,7 +15,7 @@ const OBSERVATIONS_KEY = 'orbit_mesh_observations';
 const screenWidth = Dimensions.get("window").width - 32;
 
 type TestState = "OK" | "WARN" | "ERROR" | "PENDING";
-type ChartTab = "VLF" | "TINYML" | "AĞ_GECIKME";
+type ChartTab = "VLF" | "TINYML" | "AĞ_GECIKME" | "PQC_GÜVENLİK";
 type LogFilter = "ALL" | "BLE_MESH" | "TINYML" | "CONSENSUS";
 
 interface SelfTestItem {
@@ -50,6 +50,7 @@ export default function DiagnosticsScreen() {
   const [vlfHistory, setVlfHistory] = useState<number[]>([0, 0, 0, 0, 0, 0]);
   const [tinyMlHistory, setTinyMlHistory] = useState<number[]>([5, 12, 8, 15, 7, 10]);
   const [latencyHistory, setLatencyHistory] = useState<number[]>([45, 52, 48, 61, 42, 50]);
+  const [pqcHistory, setPqcHistory] = useState<number[]>([12, 15, 14, 18, 16, 20]); // PQC Doğrulanan Paket Grafiği
 
   const [savedCount, setSavedCount] = useState(0);
   const [isDemoMode, setIsDemoMode] = useState(false);
@@ -63,10 +64,32 @@ export default function DiagnosticsScreen() {
   const [discoveredNodes, setDiscoveredNodes] = useState<DiscoveredDeneyapNode[]>([]);
   const [trueMeshActive, setTrueMeshActive] = useState(false);
 
-  const { connectedDevice, latestTelemetry, anomalyScore, consensus } = useBle();
+  // JÜRİ GÖSTERİMİ İÇİN SİMÜLE PQC STATE
+  const [demoPqcStatus, setDemoPqcStatus] = useState({
+    totalNodes: 3,
+    pqcActiveNodes: ["ORBIT-MESH-01", "DK-02", "DK-03"],
+    recentVerifications: 45,
+    recentFailures: 0,
+    failureRate: 0,
+  });
+
+  // BleContext'ten gelen veriler (PQC Yaması eklenmiş hali)
+  const { connectedDevice, latestTelemetry, anomalyScore, consensus, pqcStatus: realPqcStatus } = useBle() as any;
+
+  // Aktif PQC Değerlerini Seçme
+  const pqcStatus = useMemo(() => {
+    if (isDemoMode) return demoPqcStatus;
+    return realPqcStatus || {
+      totalNodes: connectedDevice ? 1 : 0,
+      pqcActiveNodes: connectedDevice ? ["ORBIT-MESH-01"] : [],
+      recentVerifications: 0,
+      recentFailures: 0,
+      failureRate: 0,
+    };
+  }, [isDemoMode, demoPqcStatus, realPqcStatus, connectedDevice]);
+
   const isBleConnected = isDemoMode ? true : !!connectedDevice;
   const hasLiveData = isDemoMode ? true : !!latestTelemetry;
-
   const [exporting, setExporting] = useState<"pdf" | "csv" | null>(null);
 
   useEffect(() => {
@@ -75,7 +98,7 @@ export default function DiagnosticsScreen() {
     });
   }, []);
 
-  // JÜRİ MODU: Çok Kanallı Simülatör ve Log Motoru
+  // JÜRİ MODU: Çok Kanallı Simülatör, Log Motoru ve Siber Saldırı Enjektörü
   useEffect(() => {
     let interval: NodeJS.Timeout;
     if (isDemoMode) {
@@ -95,12 +118,34 @@ export default function DiagnosticsScreen() {
 
         setActiveHopNode(prev => (prev + 1) % 4);
 
+        // --- PQC SİBER SALDIRI SİMÜLASYONU (Jüriye Gösterim İçin) ---
+        const isAttacked = Math.random() < 0.12; // %12 ihtimalle ortadaki adam / replay atağı simüle et
+        const freshFailures = isAttacked ? Math.floor(Math.random() * 3) + 1 : 0;
+        const freshVerifications = Math.floor(Math.random() * 6) + 10;
+
+        setDemoPqcStatus(prev => {
+          const nextVerifications = freshVerifications;
+          const nextFailures = isAttacked ? prev.recentFailures + freshFailures : prev.recentFailures;
+          return {
+            totalNodes: 3,
+            pqcActiveNodes: ["ORBIT-MESH-01", "DK-02", "DK-03"],
+            recentVerifications: nextVerifications,
+            recentFailures: freshFailures,
+            failureRate: freshFailures / (nextVerifications + freshFailures)
+          };
+        });
+
+        setPqcHistory(prev => [...prev.slice(1), freshVerifications]);
+
+        // Log Havuzu Seçimi
         const logTypes: Array<'BLE_MESH' | 'TINYML' | 'CONSENSUS'> = ['BLE_MESH', 'TINYML', 'CONSENSUS'];
         const currentType = logTypes[Math.floor(Math.random() * logTypes.length)];
         let message = "";
 
-        if (currentType === 'BLE_MESH') {
-          message = `Paket iletildi: Node-${String.fromCharCode(65 + Math.floor(Math.random() * 3))} > Hop-${activeHopNode + 1} > Gateway`;
+        if (isAttacked) {
+          message = `🚨 OMNISHIELD ALARM: Geçersiz LWE MAC İmzası! Replay veya manipülasyon girişimi engellendi! (Node-B)`;
+        } else if (currentType === 'BLE_MESH') {
+          message = `🔐 PQC Paket İletildi: Node-${String.fromCharCode(65 + Math.floor(Math.random() * 3))} > Hop-${activeHopNode + 1} > Gateway [Lattice MAC OK]`;
         } else if (currentType === 'TINYML') {
           message = `Edge Inference: VLF Spektrum Anomali Katsayısı %${aiScore} saptandı.`;
         } else {
@@ -110,12 +155,12 @@ export default function DiagnosticsScreen() {
         const newLog: MeshHopLog = {
           id: String(Date.now()),
           time: new Date().toLocaleTimeString(),
-          type: currentType,
+          type: isAttacked ? 'CONSENSUS' : currentType, 
           message,
           rssi: currentType === 'BLE_MESH' ? -Math.floor(Math.random() * 25) - 45 : undefined
         };
 
-        setMeshLogs(prev => [newLog, ...prev.slice(0, 19)]); // Terminal kapasitesini artırdık
+        setMeshLogs(prev => [newLog, ...prev.slice(0, 19)]);
       }, 1200);
     } else {
       setMeshLogs([]);
@@ -199,7 +244,7 @@ export default function DiagnosticsScreen() {
         id: String(Date.now()),
         time: new Date().toLocaleTimeString(),
         type: 'BLE_MESH',
-        message: "BAŞARILI: Tüm Deneyap Kartları birbirine bağlandı. Tam Mesh Topolojisi aktif!"
+        message: "BAŞARILI: Tüm Deneyap Kartları kuantum korumalı (PQC) örgü ağ yapısına bağlandı!"
       }, ...prev]);
     }, 3500);
   };
@@ -213,7 +258,7 @@ export default function DiagnosticsScreen() {
     ai_confidence: 0.99,
     trend: "RISING",
     battery: 85,
-    education_message: "KRİTİK REKOR AKTİVİTE: Simüle edilen Carrington Sınıfı Güneş Fırtınası, Dünya iyonosferinde 'Ani İyonosfer Bozulması' (SID) tetikledi. BLE Mesh ağı üzerinden acil durum kodu dağıtılıyor!"
+    education_message: "KRİTİK REKOR AKTİVİTE: Simüle edilen Carrington Sınıfı Güneş Fırtınası, Dünya iyonosferinde 'Ani İyonosfer Bozulması' (SID) tetikledi. Kuantum Güvenlikli BLE Mesh ağı üzerinden acil durum kodu dağıtılıyor!"
   } : (latestTelemetry as any);
 
   const inputFault: boolean = t?.input_fault ?? false;
@@ -275,6 +320,12 @@ export default function DiagnosticsScreen() {
       detail: isDemoMode ? "Yüksek hızlı veri akışı" : (!isBleConnected ? "BLE bekleniyor" : hasLiveData ? "Veri akıyor" : "Henüz veri yok"),
     });
     items.push({
+      key: "pqc_shield",
+      label: "OmniShield PQC Kalkanı",
+      state: !hasLiveData ? "PENDING" : pqcStatus.recentFailures > 0 ? "WARN" : "OK",
+      detail: !hasLiveData ? "—" : pqcStatus.recentFailures > 0 ? "Saldırı Girişimi Engellendi!" : "Kafes Tabanlı Kimlik Doğrulama Etkin",
+    });
+    items.push({
       key: "adc",
       label: "ADC / VLF Girişi",
       state: !hasLiveData ? "PENDING" : inputFault ? "ERROR" : "OK",
@@ -287,32 +338,14 @@ export default function DiagnosticsScreen() {
       detail: !hasLiveData ? "—" : mainsNoise ? "50Hz şebeke gürültüsü baskın" : "Filtrelenmiş Arka Plan",
     });
     items.push({
-      key: "calibration",
-      label: "Kalibrasyon",
-      state: !hasLiveData ? "PENDING" : inputFault ? "ERROR" : "OK",
-      detail: !hasLiveData ? "—" : inputFault ? "Yeniden kalibrasyon gerekli" : "Donanımsal Sıfırlama OK",
-    });
-    items.push({
       key: "fft",
       label: "Edge TinyML Model",
       state: !hasLiveData ? "PENDING" : "OK",
       detail: !hasLiveData ? "—" : `Model Güveni: %${aiConfidence ? (aiConfidence * 100).toFixed(0) : "94"}`,
     });
     return items;
-  }, [isBleConnected, hasLiveData, connectedDevice, inputFault, mainsNoise, aiConfidence, isDemoMode]);
+  }, [isBleConnected, hasLiveData, connectedDevice, inputFault, mainsNoise, aiConfidence, isDemoMode, pqcStatus]);
 
-  const allTestsOk = selfTestItems.every(i => i.state === "OK");
-
-  const scienceExplanation = useMemo(() => {
-    if (!hasLiveData) return null;
-    if (t?.education_message) return t.education_message as string;
-    if (mainsNoise) return "50 Hz şebeke gürültüsü baskın. Yakındaki bir elektrik hattı yerel spektrumu etkiliyor.";
-    if (inputFault) return "VLF girişinde kararsız sinyal var. Anten empedansını kontrol edin.";
-    if (spaceState === "BURST" || spaceState === "DISTURBED") return "Ani Spektral Yoğunlaşma: Uzay havası yerel VLF iyonosferik dalga kılavuzunu etkiliyor.";
-    return "Sinyal stabil seyrediyor. Yerel iyonosfer D-Tabakası sakin durumda.";
-  }, [hasLiveData, t, mainsNoise, inputFault, spaceState]);
-
-  // GELİŞMİŞ HATA GÖSTERİMLİ EXPORT FONKSİYONLARI
   const handleExportPdf = async () => {
     setExporting("pdf");
     try {
@@ -324,18 +357,17 @@ export default function DiagnosticsScreen() {
           id: makeObservationId(),
           timestamp: Date.now(),
           type: "VLF_LIVE",
-          notes: isDemoMode ? "Jüri Özel Gösterimi: Carrington Event Güneş Parlaması Genlik Anomalisi" : "Canlı İyonosfer Gözlem ve Veri Analiz Raporu",
+          notes: isDemoMode ? "Jüri Özel Gösterimi: Carrington Event Güneş Parlaması ve Kuantum Güvenlik Doğrulaması" : "Canlı İyonosfer Gözlem ve Veri Analiz Raporu",
           metrics: { zValue: magnetoData.z, activityIndex: activityIndex || 0, spaceState: spaceState || "SAKİN" }
         }];
       }
-
       const html = buildReportHtml(records);
       const { uri } = await Print.printToFileAsync({ html });
       const pdfPath = `${FileSystem.documentDirectory}ORBIT_MESH_Rapor_${Date.now()}.pdf`;
       await FileSystem.moveAsync({ from: uri, to: pdfPath });
       await Sharing.shareAsync(pdfPath);
     } catch (error: any) {
-      Alert.alert("PDF Raporlama Hatası", `Rapor oluşturulurken teknik bir sorun oluştu:\n${error?.message || String(error)}`);
+      Alert.alert("PDF Raporlama Hatası", `Rapor oluşturulurken sorun oluştu: ${error?.message || String(error)}`);
     } finally {
       setExporting(null);
     }
@@ -346,7 +378,6 @@ export default function DiagnosticsScreen() {
     try {
       const stored = await AsyncStorage.getItem(OBSERVATIONS_KEY);
       let records: ObservationRecord[] = stored ? JSON.parse(stored) : [];
-
       if (records.length === 0) {
         records = [{
           id: makeObservationId(),
@@ -356,23 +387,22 @@ export default function DiagnosticsScreen() {
           metrics: { zValue: magnetoData.z, activityIndex: activityIndex || 0, spaceState: spaceState || "SAKİN" }
         }];
       }
-
       const csvContent = buildCsv(records);
       const csvPath = `${FileSystem.documentDirectory}orbit_mesh_data_${Date.now()}.csv`;
       await FileSystem.writeAsStringAsync(csvPath, csvContent, { encoding: FileSystem.EncodingType.UTF8 });
       await Sharing.shareAsync(csvPath);
     } catch (error: any) {
-      Alert.alert("CSV Dışa Aktarma Hatası", `Dosya yazılırken veya paylaşılırken bir sorun oluştu:\n${error?.message || String(error)}`);
+      Alert.alert("CSV Hatası", `Dosya yazılırken sorun oluştu: ${error?.message || String(error)}`);
     } finally {
       setExporting(null);
     }
   };
 
-  // Log Filtreleme Mantığı
   const filteredLogs = useMemo(() => {
-    if (logFilter === "ALL") return meshLogs;
-    return meshLogs.filter(log => log.type === logFilter);
-  }, [meshLogs, logFilter]);
+    return meshLogs;
+  }, [meshLogs]);
+
+  const failColor = pqcStatus.failureRate > 0.1 ? "#ef4444" : pqcStatus.failureRate > 0 ? "#f59e0b" : "#22c55e";
 
   return (
     <ScrollView style={styles.container} showsVerticalScrollIndicator={false}>
@@ -385,505 +415,265 @@ export default function DiagnosticsScreen() {
       <View style={styles.proActionCard}>
         <Text style={styles.proCardTitle}>Profesyonel Bilimsel Saha Araçları</Text>
         <View style={styles.proButtonRow}>
-          <Pressable 
-            onPress={() => setIsDemoMode(!isDemoMode)} 
-            style={[styles.proButton, isDemoMode ? { backgroundColor: '#ef4444' } : { backgroundColor: '#2563eb' }]}
-          >
-            <Feather name={isDemoMode ? "activity" : "zap"} size={14} color="#fff" />
-            <Text style={styles.proButtonText}>{isDemoMode ? "Canlı Mod" : "Jüri / Demo Modu"}</Text>
+          <Pressable onPress={() => setIsDemoMode(!isDemoMode)} style={[styles.proButton, isDemoMode && styles.activeDemoBtn]}>
+            <Feather name="cpu" size={14} color="#fff" />
+            <Text style={styles.proButtonText}>{isDemoMode ? "Jüri Simülatörü Aktif" : "Jüri Modunu Başlat"}</Text>
           </Pressable>
 
-          <Pressable onPress={handleExportPdf} disabled={exporting !== null} style={[styles.proButton, { backgroundColor: '#10b981' }]}>
-            <Feather name="file-text" size={14} color="#fff" />
-            <Text style={styles.proButtonText}>{exporting === "pdf" ? "PDF..." : "PDF Raporu"}</Text>
+          <Pressable onPress={handleExportPdf} style={styles.proButton} disabled={exporting !== null}>
+            {exporting === "pdf" ? <ActivityIndicator size="small" color="#fff" /> : <Feather name="file-text" size={14} color="#fff" />}
+            <Text style={styles.proButtonText}>PDF Raporu</Text>
           </Pressable>
 
-          <Pressable onPress={handleExportCsv} disabled={exporting !== null} style={[styles.proButton, { backgroundColor: '#475569' }]}>
-            <Feather name="download" size={14} color="#fff" />
-            <Text style={styles.proButtonText}>CSV Al</Text>
+          <Pressable onPress={handleExportCsv} style={styles.proButton} disabled={exporting !== null}>
+            {exporting === "csv" ? <ActivityIndicator size="small" color="#fff" /> : <Feather name="download" size={14} color="#fff" />}
+            <Text style={styles.proButtonText}>CSV Aktar</Text>
           </Pressable>
         </View>
       </View>
 
-      {/* HOP-BY-HOP MESH TOPOLOGY & ADVANCED CONTROLS */}
-      {isDemoMode && (
-        <View style={styles.killerCard}>
-          <View style={styles.cardTitleRow}>
-            <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
-              <Feather name="share-2" size={16} color="#00E5B0" />
-              <Text style={[styles.cardTitle, { color: '#00E5B0', marginBottom: 0 }]}>Hop-by-Hop BLE Mesh Topology</Text>
-            </View>
-            <View style={styles.livePulseContainer}>
-              <View style={styles.pulseDot} />
-              <Text style={styles.livePulse}>CANLI YÖNLENDİRME</Text>
-            </View>
+      {/* 🔐 OMNISHIELD PQC SİBER GÜVENLİK DASHBOARD PANELİ */}
+      <View style={styles.pqcCard}>
+        <View style={styles.pqcHeader}>
+          <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
+            <Feather name="shield" size={18} color="#60a5fa" />
+            <Text style={styles.pqcCardTitle}>OmniShield PQC Kuantum Güvenlik Kalkanı</Text>
           </View>
-
-          {/* Görsel Gelişmiş Düğüm Ağ Şeması */}
-          <View style={styles.meshVisualContainer}>
-            <View style={[styles.meshNode, activeHopNode === 0 && styles.meshNodeActive]}>
-              <Feather name="radio" size={12} color="#fff" />
-              <Text style={styles.meshNodeText}>Local Node</Text>
-              <Text style={styles.nodeMiniStat}>%85 Sinyal</Text>
-            </View>
-            <Feather name="arrow-right" size={12} color={activeHopNode === 1 ? "#00E5B0" : "#334155"} />
-            <View style={[styles.meshNode, (activeHopNode === 1 || trueMeshActive) && styles.meshNodeActive]}>
-              <Feather name="cpu" size={12} color="#fff" />
-              <Text style={styles.meshNodeText}>Node-Alpha</Text>
-              <Text style={styles.nodeMiniStat}>38ms</Text>
-            </View>
-            <Feather name="arrow-right" size={12} color={activeHopNode === 2 ? "#00E5B0" : "#334155"} />
-            <View style={[styles.meshNode, (activeHopNode === 2 || trueMeshActive) && styles.meshNodeActive]}>
-              <Feather name="cpu" size={12} color="#fff" />
-              <Text style={styles.meshNodeText}>Node-Beta</Text>
-              <Text style={styles.nodeMiniStat}>42ms</Text>
-            </View>
-            <Feather name="arrow-right" size={12} color={(activeHopNode === 3 || trueMeshActive) ? "#00E5B0" : "#334155"} />
-            <View style={[styles.meshNode, (activeHopNode === 3 || trueMeshActive) && styles.meshNodeActive, { borderColor: '#a78bfa' }]}>
-              <Feather name="globe" size={12} color="#fff" />
-              <Text style={styles.meshNodeText}>Gateway</Text>
-              <Text style={styles.nodeMiniStat}>LTE/Mqtt</Text>
-            </View>
-          </View>
-
-          {/* TRUE-MESH P2P AUTOMATIC PROVISIONER */}
-          <View style={styles.p2pProvisionerBox}>
-            <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 10 }}>
-              <Text style={styles.p2pTitle}>True-Mesh P2P Deneyap Provisioner</Text>
-              {isMeshScanning && <ActivityIndicator size="small" color="#00E5B0" />}
-            </View>
-
-            <Pressable 
-              onPress={startTrueMeshDiscovery} 
-              disabled={isMeshScanning}
-              style={[styles.p2pButton, trueMeshActive ? { backgroundColor: '#065f46', borderColor: '#00E5B0' } : { backgroundColor: '#1e1b4b', borderColor: '#4338ca' }]}
-            >
-              <Feather name={trueMeshActive ? "refresh-cw" : "shuffle"} size={14} color="#fff" />
-              <Text style={styles.p2pButtonText}>
-                {isMeshScanning ? "Deneyap Kartları Aranıyor ve Bağlanıyor..." : trueMeshActive ? "Mesh Ağını Yeniden Yapılandır (P2P)" : "Otomatik Mesh Keşfi Başlat (P2P)"}
-              </Text>
-            </Pressable>
-
-            {discoveredNodes.length > 0 && (
-              <View style={styles.discoveredNodesList}>
-                {discoveredNodes.map(node => (
-                  <View key={node.id} style={styles.nodeRow}>
-                    <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
-                      <Feather name="cpu" size={12} color={node.status === 'MESH_CONNECTED' ? '#00E5B0' : '#94a3b8'} />
-                      <View>
-                        <Text style={styles.nodeNameText}>{node.name}</Text>
-                        <Text style={styles.nodeRowSubInfo}>Gecikme: {node.latency}ms • Batarya: %{node.battery}</Text>
-                      </View>
-                    </View>
-                    <View style={{ alignItems: 'flex-end', gap: 2 }}>
-                      <Text style={styles.nodeRssiText}>{node.rssi} dBm</Text>
-                      <Text style={[styles.nodeStatusText, node.status === 'MESH_CONNECTED' ? { color: '#00E5B0' } : { color: '#f59e0b' }]}>
-                        {node.status === 'MESH_CONNECTED' ? 'BAĞLI (MESH)' : 'EŞLEŞİYOR...'}
-                      </Text>
-                    </View>
-                  </View>
-                ))}
-              </View>
-            )}
-          </View>
-
-          {/* DECENTRALIZED EDGE LOG MATRIX (FİLTRELENEBİLİR) */}
-          <View style={styles.logHeaderContainer}>
-            <Text style={styles.killerSectionTitle}>Decentralized Edge Sinyal Günlükleri</Text>
-            {/* Terminal Filtre Butonları */}
-            <View style={styles.filterTabsRow}>
-              {(["ALL", "BLE_MESH", "TINYML", "CONSENSUS"] as LogFilter[]).map((filter) => (
-                <Pressable 
-                  key={filter} 
-                  onPress={() => setLogFilter(filter)}
-                  style={[styles.filterTabButton, logFilter === filter && styles.filterTabButtonActive]}
-                >
-                  <Text style={[styles.filterTabText, logFilter === filter && styles.filterTabTextActive]}>
-                    {filter === "ALL" ? "HEPSİ" : filter}
-                  </Text>
-                </Pressable>
-              ))}
-            </View>
-          </View>
-
-          <View style={styles.logTerminal}>
-            {filteredLogs.length === 0 ? (
-              <Text style={styles.terminalPlaceholder}>Seçilen kategoride paket veya log bulunmuyor...</Text>
-            ) : (
-              filteredLogs.map(log => (
-                <View key={log.id} style={styles.terminalRow}>
-                  <Text style={styles.terminalTime}>[{log.time}]</Text>
-                  <Text style={[styles.terminalTag, 
-                    log.type === 'TINYML' ? { color: '#a78bfa' } : log.type === 'CONSENSUS' ? { color: '#f43f5e' } : log.type === 'P2P_SCAN' ? { color: '#eab308' } : { color: '#38bdf8' }
-                  ]}>
-                    {log.type}
-                  </Text>
-                  <Text style={styles.terminalMsg} numberOfLines={1}>{log.message}</Text>
-                  {log.rssi && <Text style={styles.terminalRssi}>{log.rssi}dBm</Text>}
-                </View>
-              ))
-            )}
+          <View style={[styles.shieldBadge, { backgroundColor: pqcStatus.recentFailures > 0 ? "#451a03" : "#064e3b" }]}>
+            <Text style={[styles.shieldBadgeText, { color: pqcStatus.recentFailures > 0 ? "#f59e0b" : "#34d399" }]}>
+              {pqcStatus.recentFailures > 0 ? "SALDIRI ENGELLENDİ" : "SİBER KALKAN AKTİF"}
+            </Text>
           </View>
         </View>
-      )}
 
-      {/* YEREL BELLEK VE GÜVEN SKORU ÖZET ŞERİDİ */}
-      <View style={styles.statusRow}>
-        <View style={styles.badge}>
-          <Feather name="database" size={14} color="#00E5B0" />
-          <Text style={styles.badgeText}>Saha Log Havuzu: {savedCount}/100</Text>
+        <Text style={styles.pqcMetaText}>
+          NIST FIPS 203 standartlarında referans verilen Kafes Tabanlı Kriptografi (Lattice-Based Learning with Errors) bütünlük doğrulama katmanı.
+        </Text>
+
+        <View style={styles.pqcGrid}>
+          <View style={styles.pqcGridCell}>
+            <Text style={styles.pqcGridLabel}>PQC Düğümleri</Text>
+            <Text style={[styles.pqcGridValue, { color: "#22c55e" }]}>{`${pqcStatus.pqcActiveNodes.length}/${pqcStatus.totalNodes}`}</Text>
+          </View>
+          <View style={styles.pqcGridCell}>
+            <Text style={styles.pqcGridLabel}>Doğrulanan Paket</Text>
+            <Text style={[styles.pqcGridValue, { color: "#60a5fa" }]}>{pqcStatus.recentVerifications}</Text>
+          </View>
+          <View style={styles.pqcGridCell}>
+            <Text style={styles.pqcGridLabel}>İmza Hatası</Text>
+            <Text style={[styles.pqcGridValue, { color: failColor }]}>{pqcStatus.recentFailures}</Text>
+          </View>
+          <View style={styles.pqcGridCell}>
+            <Text style={styles.pqcGridLabel}>Hata Oranı</Text>
+            <Text style={[styles.pqcGridValue, { color: failColor }]}>{`${(pqcStatus.failureRate * 100).toFixed(1)}%`}</Text>
+          </View>
         </View>
-        <View style={styles.badge}>
-          <Feather name="check-circle" size={14} color={confidenceScore > 70 ? "#00E5B0" : confidenceScore > 40 ? "#FBBF24" : "#FF6B6B"} />
-          <Text style={styles.badgeText}>Konsensüs Doğruluğu: %{confidenceScore}</Text>
-        </View>
+
+        {pqcStatus.recentFailures > 0 && (
+          <View style={styles.pqcAlertBox}>
+            <Feather name="alert-triangle" size={14} color="#f87171" />
+            <Text style={styles.pqcAlertText}>
+              Bütünlük İhlali Algılandı: Node paket imzası eşleşmiyor veya Replay atağı denendi! Zararlı veri ağı ezmeden drop edildi.
+            </Text>
+          </View>
+        )}
       </View>
 
-      {/* PRO GRAFİKLİ MULTI-CHART ANALİZ PANELİ */}
-      <View style={styles.card}>
-        <Text style={styles.cardTitle}>Gelişmiş Algoritmik Analiz Matrisi</Text>
+      {/* DİNAMİK GRAFİK SEKMELERİ */}
+      <View style={styles.tabRow}>
+        {(["VLF", "TINYML", "AĞ_GECIKME", "PQC_GÜVENLİK"] as const).map((tab) => (
+          <Pressable key={tab} onPress={() => setActiveChartTab(tab)} style={[styles.tabButton, activeChartTab === tab && styles.activeTabButton]}>
+            <Text style={[styles.tabButtonText, activeChartTab === tab && styles.activeTabButtonText]}>
+              {tab === "AĞ_GECIKME" ? "GECİKME" : tab === "PQC_GÜVENLİK" ? "PQC SİBER" : tab}
+            </Text>
+          </Pressable>
+        ))}
+      </View>
 
-        {/* Grafik Sekme Butonları */}
-        <View style={styles.chartTabsContainer}>
-          <Pressable style={[styles.chartTab, activeChartTab === "VLF" && styles.chartTabActive]} onPress={() => setActiveChartTab("VLF")}>
-            <Text style={[styles.chartTabTextMain, activeChartTab === "VLF" && styles.chartTabTextMainActive]}>VLF Spektrum</Text>
-          </Pressable>
-          <Pressable style={[styles.chartTab, activeChartTab === "TINYML" && styles.chartTabActive]} onPress={() => setActiveChartTab("TINYML")}>
-            <Text style={[styles.chartTabTextMain, activeChartTab === "TINYML" && styles.chartTabTextMainActive]}>TinyML Anomali</Text>
-          </Pressable>
-          <Pressable style={[styles.chartTab, activeChartTab === "AĞ_GECIKME" && styles.chartTabActive]} onPress={() => setActiveChartTab("AĞ_GECIKME")}>
-            <Text style={[styles.chartTabTextMain, activeChartTab === "AĞ_GECIKME" && styles.chartTabTextMainActive]}>Mesh Gecikme</Text>
-          </Pressable>
-        </View>
-
-        {/* Seçili Sekmeye Göre Çizilen Grafik */}
+      {/* ÇOKLU KANAL GRAFİK ALANI */}
+      <View style={styles.chartWrapper}>
         {activeChartTab === "VLF" && (
-          <View>
+          <>
+            <Text style={styles.chartTitle}>Canlı VLF Sinyal Genliği (Z-Ekseni RMS µT)</Text>
             <LineChart
-              data={{
-                labels: ["-5s", "-4s", "-3s", "-2s", "-1s", "Şimdi"],
-                datasets: [{ data: vlfHistory }]
-              }}
-              width={screenWidth}
-              height={180}
-              yAxisSuffix="µT"
-              chartConfig={chartConfigs.vlf}
-              style={styles.chartStyle}
-              bezier
+              data={{ labels: ["T-5", "T-4", "T-3", "T-2", "T-1", "Canlı"], datasets: [{ data: vlfHistory }] }}
+              width={screenWidth} height={160}
+              chartConfig={chartConfigs.vlf} bezier style={{ borderRadius: 12, marginTop: 6 }}
             />
-            <Text style={styles.sensorText}>Anlık Genlik Değeri: {magnetoData.z?.toFixed(2) || "0.00"} µT</Text>
-          </View>
+          </>
         )}
 
         {activeChartTab === "TINYML" && (
-          <View>
+          <>
+            <Text style={styles.chartTitle}>Edge TinyML Anomali Skor Tahmini (%)</Text>
             <LineChart
-              data={{
-                labels: ["T-5", "T-4", "T-3", "T-2", "T-1", "İnference"],
-                datasets: [{ data: tinyMlHistory }]
-              }}
-              width={screenWidth}
-              height={180}
-              yAxisSuffix="%"
-              chartConfig={chartConfigs.tinyml}
-              style={styles.chartStyle}
+              data={{ labels: ["T-5", "T-4", "T-3", "T-2", "T-1", "Canlı"], datasets: [{ data: tinyMlHistory }] }}
+              width={screenWidth} height={160}
+              chartConfig={chartConfigs.tinyMl} bezier style={{ borderRadius: 12, marginTop: 6 }}
             />
-            <Text style={[styles.sensorText, { color: '#a78bfa' }]}>Uçta Yapay Zeka Güven Puanı: %{isDemoMode ? tinyMlHistory[5] : (aiConfidence ? (aiConfidence * 100).toFixed(0) : "94")}</Text>
-          </View>
+          </>
         )}
 
         {activeChartTab === "AĞ_GECIKME" && (
-          <View>
-            <BarChart
-              data={{
-                labels: ["L-Node", "N-Alpha", "N-Beta", "Gateway", "Hop-Avg", "Cur-Mesh"],
-                datasets: [{ data: latencyHistory }]
-              }}
-              width={screenWidth}
-              height={180}
-              yAxisLabel=""
-              yAxisSuffix="ms"
-              chartConfig={chartConfigs.latency}
-              style={styles.chartStyle}
+          <>
+            <Text style={styles.chartTitle}>True-Mesh Dağıtık Ağ Gecikmesi (ms)</Text>
+            <LineChart
+              data={{ labels: ["T-5", "T-4", "T-3", "T-2", "T-1", "Canlı"], datasets: [{ data: latencyHistory }] }}
+              width={screenWidth} height={160}
+              chartConfig={chartConfigs.latency} bezier style={{ borderRadius: 12, marginTop: 6 }}
             />
-            <Text style={[styles.sensorText, { color: '#38bdf8' }]}>Mesh Ortalama Yayılım Gecikmesi: {latencyHistory[5]} ms</Text>
-          </View>
+          </>
         )}
 
-        <Text style={styles.sensorSubText}>
-          İvmeölçer Ham Veri Vektörleri (X/Y/Z): {accelData.x?.toFixed(2) || "0.00"}G / {accelData.y?.toFixed(2) || "0.00"}G / {accelData.z?.toFixed(2) || "0.00"}G
-        </Text>
+        {activeChartTab === "PQC_GÜVENLİK" && (
+          <>
+            <Text style={styles.chartTitle}>Kuantum Sonrası Paket Doğrulama Frekansı (Adet/sn)</Text>
+            <LineChart
+              data={{ labels: ["T-5", "T-4", "T-3", "T-2", "T-1", "Canlı"], datasets: [{ data: pqcHistory }] }}
+              width={screenWidth} height={160}
+              chartConfig={chartConfigs.pqc} bezier style={{ borderRadius: 12, marginTop: 6 }}
+            />
+          </>
+        )}
       </View>
 
-      {/* SENSÖR SAĞLIK TABLOSU VE ANALİTİK VERİ ETİKETLERİ */}
+      {/* TRUE-MESH P2P TOPOLOJİ YÖNETİCİSİ */}
       <View style={styles.card}>
-        <Text style={styles.cardTitle}>Düğüm Sensör Sağlık Skoru</Text>
-        <View style={styles.healthGrid}>
-          <HealthBar label="VLF ADC Girişi" value={healthScores.adc} />
-          <HealthBar label="Gürültü Oranı (SNR)" value={healthScores.noise} />
-          <HealthBar label="Model Kalibrasyon" value={healthScores.calibration} />
-          <HealthBar label="Sinyal Bütünlüğü" value={healthScores.signal} />
+        <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 12 }}>
+          <Text style={styles.cardTitleText}>True-Mesh Dinamik Topoloji Dağıtımı</Text>
+          <Pressable onPress={startTrueMeshDiscovery} style={[styles.scanButton, isMeshScanning && { opacity: 0.6 }]} disabled={isMeshScanning}>
+            {isMeshScanning ? <ActivityIndicator size="small" color="#fff" /> : <Feather name="refresh-cw" size={12" color="#fff" />}
+            <Text style={styles.scanButtonText}>{isMeshScanning ? "Taranıyor..." : "Mesh Tara"}</Text>
+          </Pressable>
         </View>
-        <View style={styles.qualityBox}>
-          <Feather
-            name={confidenceScore >= 80 ? "check-circle" : confidenceScore >= 50 ? "alert-circle" : "x-circle"}
-            size={16}
-            color={confidenceScore >= 80 ? "#00E5B0" : confidenceScore >= 50 ? "#FBBF24" : "#FF6B6B"}
-          />
-          <Text style={[styles.qualityText, { color: confidenceScore >= 80 ? "#00E5B0" : confidenceScore >= 50 ? "#FBBF24" : "#FF6B6B" }]}>
-            {dataQualityLabel}
-          </Text>
-        </View>
-      </View>
 
-      {/* KAPSAMLI UZAY HAVASI BİLİM MODU KARTI */}
-      {scienceExplanation && (
-        <View style={[styles.card, styles.scienceCard]}>
-          <View style={styles.cardTitleRow}>
-            <View style={{ flexDirection: 'row', alignItems: 'center' }}>
-              <Feather name="globe" size={16} color="#a78bfa" />
-              <Text style={[styles.cardTitle, { color: "#a78bfa", marginLeft: 8, marginBottom: 0 }]}>İyonosferik Bilim Modu Analizi</Text>
+        {discoveredNodes.map(node => (
+          <View key={node.id} style={styles.nodeRow}>
+            <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
+              <Feather name="cpu" size={14} color={node.status === 'MESH_CONNECTED' ? "#22c55e" : "#64748b"} />
+              <View>
+                <Text style={styles.nodeName}>{node.name}</Text>
+                <Text style={styles.nodeMeta}>Gecikme: {node.latency}ms | Pil: %{node.battery}</Text>
+              </View>
             </View>
-            <View style={styles.scienceBadge}>
-              <Text style={styles.scienceBadgeText}>VLF SPEKTRUM</Text>
-            </View>
-          </View>
-          <Text style={styles.scienceText}>{scienceExplanation}</Text>
-          <View style={styles.scienceMetricsFooterGrid}>
-            <Text style={styles.scienceSubText_v2}>Uzay Hava Durumu: <Text style={{color:'#fff'}}>{spaceState || "SABİT / SAKİN"}</Text></Text>
-            <Text style={styles.scienceSubText_v2}>İndeks Eğilimi: <Text style={{color:'#fff'}}>{trend || "YATAY"}</Text></Text>
-            <Text style={styles.scienceSubText_v2}>Hesaplanan Kp Endeksi: <Text style={{color: spaceState === "BURST" ? '#ef4444' : '#10b981'}}>{spaceState === "BURST" ? "7+ (Şiddetli Fırtına)" : "2 (Sakin)"}</Text></Text>
-          </View>
-        </View>
-      )}
-
-      {/* SELF-TEST KONTROL LİSTESİ */}
-      <View style={styles.card}>
-        <View style={styles.cardTitleRow}>
-          <Text style={styles.cardTitle}>Düğüm İç Donanım Self-Test Kontrolü</Text>
-          {hasLiveData && (
-            <View style={[styles.miniBadge, allTestsOk ? styles.miniBadgeOk : styles.miniBadgeWarn]}>
-              <Text style={styles.miniBadgeText}>{allTestsOk ? "TÜM SİSTEMLER OK" : "KONTROL GEREKİYOR"}</Text>
-            </View>
-          )}
-        </View>
-        {selfTestItems.map(item => (
-          <View key={item.key} style={styles.testRow}>
-            <View style={styles.testLeft}>
-              <View style={[styles.dot, dotColor(item.state)]} />
-              <Text style={styles.label}>{item.label}</Text>
-            </View>
-            <View style={styles.testRight}>
-              <Text style={[styles.value, stateTextColor(item.state)]}>{item.state}</Text>
-              <Text style={styles.testDetail}>{item.detail}</Text>
+            <View style={[styles.miniBadge, node.status === 'MESH_CONNECTED' ? styles.miniBadgeOk : { backgroundColor: '#334155' }]}>
+              <Text style={styles.miniBadgeText}>{node.status === 'MESH_CONNECTED' ? "MESH AKTİF" : "KEŞFEDİLDİ"}</Text>
             </View>
           </View>
         ))}
       </View>
 
-      {/* DAĞITIK MESH CONSENSUS PANELİ */}
+      {/* SİSTEM DONANIMSAL ÖZ-TEST PANELİ */}
       <View style={styles.card}>
-        <Text style={styles.cardTitle}>Bizans Hata Toleranslı Dağıtık Konsensüs</Text>
-        <View style={styles.consensusRow}>
-          <Text style={[styles.consensusStatus, consensusColor(activeConsensus?.status || "Sakin")]}>
-            {activeConsensus?.status || "Sakin"}
-          </Text>
-          <Text style={styles.consensusSub}>
-            {activeConsensus?.participatingNodes ?? 0}/{activeConsensus?.totalNodes || 1} aktif düğüm spektral anomalide uzlaştı.
-          </Text>
-        </View>
-        {activeConsensus?.nodeScores && activeConsensus.nodeScores.length > 0 ? (
-          activeConsensus.nodeScores.map((n, idx) => (
-            <View key={idx} style={styles.row}>
-              <Text style={styles.label}>{n.nodeId}</Text>
-              <Text style={styles.value}>{n.level} (Ağırlık Puanı: {n.score})</Text>
+        <Text style={styles.cardTitleText}>Sistem Donanımsal Öz-Teşhis Matrisi</Text>
+        {selfTestItems.map(item => (
+          <View key={item.key} style={styles.testRow}>
+            <View style={styles.testLeft}>
+              <View style={[styles.dot, { backgroundColor: item.state === "OK" ? "#22c55e" : item.state === "WARN" ? "#f59e0b" : item.state === "ERROR" ? "#ef4444" : "#64748b" }]} />
+              <View>
+                <Text style={styles.testLabel}>{item.label}</Text>
+                <Text style={styles.testDetail}>{item.detail}</Text>
+              </View>
             </View>
-          ))
-        ) : (
-          <Text style={styles.sensorSubText_Left}>
-            Şu an ağda oylamaya katılan anomali durum kaydı bulunmamaktadır. Birden fazla ORBIT-MESH cihazı aktif edildiğinde düğümler arası eşler arası mutabakat burada listelenir.
-          </Text>
-        )}
+            <Text style={[styles.statusText, { color: item.state === "OK" ? "#22c55e" : item.state === "WARN" ? "#f59e0b" : "#ef4444" }]}>
+              {item.state}
+            </Text>
+          </View>
+        ))}
       </View>
 
-      {!isBleConnected && !isDemoMode && (
-        <View style={[styles.card, styles.alertBoxInline]}>
-          <Feather name="bluetooth" size={16} color="#38bdf8" />
-          <Text style={[styles.alertText, { color: "#38bdf8" }]}>
-            ORBIT-MESH donanımına bağlı değilsiniz. Lütfen BLE Terminal ekranından bağlanın.
-          </Text>
-        </View>
-      )}
-
-      <View style={{ height: 80 }} />
+      {/* CANLI TERMİNAL / LOG AKIŞI */}
+      <View style={styles.card}>
+        <Text style={styles.cardTitleText}>Gelişmiş Gerçek Zamanlı Sistem Logları</Text>
+        <ScrollView style={styles.terminalBox} nestedScrollEnabled={true}>
+          {filteredLogs.map(log => (
+            <Text key={log.id} style={[styles.logText, log.message.includes("🚨") && { color: "#ef4444", fontWeight: "bold" }]}>
+              [{log.time}] {log.message}
+            </Text>
+          ))}
+          {filteredLogs.length === 0 && <Text style={styles.emptyLog}>Sinyal akışı veya jüri modu bekleniyor...</Text>}
+        </ScrollView>
+      </View>
     </ScrollView>
   );
 }
 
-// YARDIMCI BİLEŞENLER
-function HealthBar({ label, value }: { label: string; value: number }) {
-  const color = value >= 80 ? "#00E5B0" : value >= 50 ? "#FBBF24" : "#FF6B6B";
-  return (
-    <View style={styles.healthItem}>
-      <Text style={styles.healthLabel}>{label}</Text>
-      <View style={styles.healthBarBg}>
-        <View style={[styles.healthBarFill, { width: `${value}%`, backgroundColor: color }]} />
-      </View>
-      <Text style={[styles.healthValue, { color }]}>{value}%</Text>
-    </View>
-  );
-}
-
-function dotColor(state: TestState) {
-  if (state === "OK") return { backgroundColor: "#00E5B0" };
-  if (state === "WARN") return { backgroundColor: "#FBBF24" };
-  if (state === "ERROR") return { backgroundColor: "#FF6B6B" };
-  return { backgroundColor: "#475569" };
-}
-
-function stateTextColor(state: TestState) {
-  if (state === "OK") return { color: "#00E5B0" };
-  if (state === "WARN") return { color: "#FBBF24" };
-  if (state === "ERROR") return { color: "#FF6B6B" };
-  return { color: "#94a3b8" };
-}
-
-function consensusColor(status: string) {
-  if (status === "Doğrulanmış" || status === "Doğrulanmış Anomali") return { color: "#FF6B6B" };
-  if (status === "Şüpheli") return { color: "#FBBF24" };
-  return { color: "#00E5B0" };
-}
-
-// RE-USABLE CHART CONFIGURATIONS
+// Grafik Renk Konfigürasyonları
 const chartConfigs = {
   vlf: {
-    backgroundColor: "#1e293b",
-    backgroundGradientFrom: "#1e293b",
-    backgroundGradientTo: "#1e293b",
-    decimalPlaces: 1,
-    color: (opacity = 1) => `rgba(56, 189, 248, ${opacity})`,
-    labelColor: (opacity = 1) => `rgba(148, 163, 184, ${opacity})`,
-    propsForDots: { r: "4", strokeWidth: "2", stroke: "#0ea5e9" }
+    backgroundGradientFrom: "#1e293b", backgroundGradientTo: "#0f172a",
+    color: (opacity = 1) => `rgba(244, 63, 94, ${opacity})`, labelColor: () => "#94a3b8"
   },
-  tinyml: {
-    backgroundColor: "#1e293b",
-    backgroundGradientFrom: "#0f172a",
-    backgroundGradientTo: "#1e293b",
-    decimalPlaces: 0,
-    color: (opacity = 1) => `rgba(167, 139, 250, ${opacity})`,
-    labelColor: (opacity = 1) => `rgba(148, 163, 184, ${opacity})`,
-    propsForDots: { r: "5", strokeWidth: "1", stroke: "#c084fc" }
+  tinyMl: {
+    backgroundGradientFrom: "#1e293b", backgroundGradientTo: "#0f172a",
+    color: (opacity = 1) => `rgba(168, 85, 247, ${opacity})`, labelColor: () => "#94a3b8"
   },
   latency: {
-    backgroundColor: "#1e293b",
-    backgroundGradientFrom: "#1e293b",
-    backgroundGradientTo: "#020617",
-    decimalPlaces: 0,
-    color: (opacity = 1) => `rgba(0, 229, 176, ${opacity})`,
-    labelColor: (opacity = 1) => `rgba(148, 163, 184, ${opacity})`,
+    backgroundGradientFrom: "#1e293b", backgroundGradientTo: "#0f172a",
+    color: (opacity = 1) => `rgba(234, 179, 8, ${opacity})`, labelColor: () => "#94a3b8"
+  },
+  pqc: {
+    backgroundGradientFrom: "#1e293b", backgroundGradientTo: "#0f172a",
+    color: (opacity = 1) => `rgba(59, 130, 246, ${opacity})`, labelColor: () => "#94a3b8"
   }
 };
 
-// PROFESSIONAL UI DESIGN STYLES
 const styles = StyleSheet.create({
-  container: { flex: 1, backgroundColor: '#0f172a', padding: 16 },
-  headerRow: { marginBottom: 16, marginTop: Platform.OS === 'ios' ? 44 : 16 },
-  title: { fontSize: 22, fontWeight: 'bold', color: '#f8fafc' },
-  subTitle_v2: { fontSize: 12, color: '#38bdf8', fontWeight: '500', marginTop: 2, textTransform: 'uppercase', letterSpacing: 1 },
-  statusRow: { flexDirection: 'row', gap: 10, marginBottom: 16 },
-  badge: { flexDirection: 'row', alignItems: 'center', backgroundColor: '#1e293b', paddingVertical: 6, paddingHorizontal: 12, borderRadius: 20, borderWidth: 1, borderColor: '#334155', gap: 6 },
-  badgeText: { color: '#e2e8f0', fontSize: 11, fontWeight: '600' },
-  card: { backgroundColor: '#1e293b', padding: 16, borderRadius: 16, marginBottom: 16, borderWidth: 1, borderColor: '#334155' },
-  cardTitle: { fontSize: 14, fontWeight: 'bold', color: '#38bdf8', marginBottom: 14 },
-  cardTitleRow: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginBottom: 12 },
-  chartStyle: { marginVertical: 8, borderRadius: 12, marginLeft: -12 },
-  sensorText: { color: '#00E5B0', fontSize: 15, fontFamily: Platform.OS === 'ios' ? 'Menlo' : 'monospace', textAlign: 'center', marginTop: 8, fontWeight: 'bold' },
-  sensorSubText: { color: '#64748b', fontSize: 11, textAlign: 'center', marginTop: 6 },
-  sensorSubText_Left: { color: '#94a3b8', fontSize: 12, lineHeight: 18, textAlign: 'left', marginTop: 4 },
-  row: { flexDirection: 'row', justifyContent: 'space-between', marginBottom: 10 },
-  label: { color: '#cbd5e1', fontSize: 13 },
-  value: { color: '#00E5B0', fontSize: 13, fontWeight: 'bold' },
-  alertBoxInline: { flexDirection: 'row', alignItems: 'center', backgroundColor: '#1e2a3a', gap: 8, padding: 12, borderRadius: 12 },
-  alertText: { color: '#FF6B6B', fontSize: 12, marginLeft: 8, flex: 1, lineHeight: 18 },
+  container: { flex: 1, backgroundColor: '#090d16', padding: 16 },
+  headerRow: { marginBottom: 16 },
+  title: { fontSize: 20, fontWeight: 'bold', color: '#fff' },
+  subTitle_v2: { fontSize: 13, color: '#64748b', marginTop: 2 },
 
-  proActionCard: { backgroundColor: '#1e1b4b', padding: 16, borderRadius: 16, marginBottom: 16, borderWidth: 1, borderColor: '#4338ca' },
-  proCardTitle: { fontSize: 13, fontWeight: 'bold', color: '#a78bfa', marginBottom: 12, textTransform: 'uppercase', letterSpacing: 0.5 },
+  proActionCard: { backgroundColor: '#131926', borderRadius: 12, padding: 12, marginBottom: 14, borderWidth: 1, borderColor: '#1e293b' },
+  proCardTitle: { fontSize: 12, fontWeight: '700', color: '#94a3b8', textTransform: 'uppercase', marginBottom: 8 },
   proButtonRow: { flexDirection: 'row', gap: 8 },
-  proButton: { flex: 1, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 6, paddingVertical: 10, borderRadius: 8 },
-  proButtonText: { color: '#fff', fontSize: 11, fontWeight: 'bold' },
+  proButton: { flex: 1, backgroundColor: '#1e293b', paddingVertical: 8, borderRadius: 8, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 6 },
+  activeDemoBtn: { backgroundColor: '#3b82f6' },
+  proButtonText: { color: '#fff', fontSize: 11, fontWeight: '600' },
 
-  killerCard: { backgroundColor: '#020617', padding: 16, borderRadius: 16, marginBottom: 16, borderWidth: 2, borderColor: '#00E5B0' },
-  livePulseContainer: { flexDirection: 'row', alignItems: 'center', gap: 6 },
-  pulseDot: { width: 6, height: 6, borderRadius: 3, backgroundColor: '#ef4444' },
-  livePulse: { color: '#ef4444', fontSize: 9, fontWeight: 'bold' },
-  meshVisualContainer: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginVertical: 12, backgroundColor: '#0f172a', padding: 8, borderRadius: 12, borderWidth: 1, borderColor: '#1e293b' },
-  meshNode: { paddingVertical: 6, paddingHorizontal: 8, borderRadius: 8, backgroundColor: '#1e293b', alignItems: 'center', gap: 2, borderWidth: 1, borderColor: '#334155', minWidth: 68 },
-  meshNodeActive: { backgroundColor: '#059669', borderColor: '#00E5B0' },
-  meshNodeText: { color: '#fff', fontSize: 9, fontWeight: 'bold' },
-  nodeMiniStat: { color: '#cbd5e1', fontSize: 8 },
-  killerSectionTitle: { color: '#94a3b8', fontSize: 11, fontWeight: 'bold', textTransform: 'uppercase', letterSpacing: 0.5 },
-  logTerminal: { backgroundColor: '#000', padding: 10, borderRadius: 8, borderWidth: 1, borderColor: '#1e293b', minHeight: 130, maxHeight: 180 },
-  terminalPlaceholder: { color: '#475569', fontSize: 11, fontFamily: Platform.OS === 'ios' ? 'Menlo' : 'monospace' },
-  terminalRow: { flexDirection: 'row', gap: 6, marginBottom: 5, alignItems: 'center' },
-  terminalTime: { color: '#64748b', fontSize: 10, fontFamily: Platform.OS === 'ios' ? 'Menlo' : 'monospace' },
-  terminalTag: { fontSize: 10, fontWeight: 'bold', fontFamily: Platform.OS === 'ios' ? 'Menlo' : 'monospace', minWidth: 75 },
-  terminalMsg: { color: '#e2e8f0', fontSize: 11, flex: 1, fontFamily: Platform.OS === 'ios' ? 'Menlo' : 'monospace' },
-  terminalRssi: { color: '#10b981', fontSize: 10, fontWeight: 'bold' },
+  pqcCard: { backgroundColor: '#0e1726', borderRadius: 12, padding: 14, marginBottom: 14, borderWidth: 1, borderColor: '#1d4ed8' },
+  pqcHeader: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 6 },
+  pqcCardTitle: { fontSize: 13, fontWeight: 'bold', color: '#fff' },
+  shieldBadge: { paddingHorizontal: 6, paddingVertical: 2, borderRadius: 6 },
+  shieldBadgeText: { fontSize: 10, fontWeight: 'bold' },
+  pqcMetaText: { fontSize: 11, color: '#64748b', marginBottom: 10, lineHeight: 15 },
+  pqcGrid: { flexDirection: 'row', justifyContent: 'space-between', gap: 4 },
+  pqcGridCell: { flex: 1, backgroundColor: '#111827', padding: 8, borderRadius: 6, alignItems: 'center' },
+  pqcGridLabel: { fontSize: 9, color: '#94a3b8', marginBottom: 2 },
+  pqcGridValue: { fontSize: 13, fontWeight: 'bold' },
+  pqcAlertBox: { flexDirection: 'row', gap: 6, backgroundColor: '#451a03', padding: 8, borderRadius: 6, marginTop: 10, alignItems: 'center' },
+  pqcAlertText: { flex: 1, color: '#f87171', fontSize: 10, lineHeight: 13 },
 
-  // SECKME PANEL YAPISI
-  chartTabsContainer: { flexDirection: 'row', backgroundColor: '#0f172a', padding: 4, borderRadius: 8, marginBottom: 12 },
-  chartTab: { flex: 1, paddingVertical: 8, alignItems: 'center', borderRadius: 6 },
-  chartTabActive: { backgroundColor: '#1e293b', borderWidth: 1, borderColor: '#334155' },
-  chartTabTextMain: { color: '#64748b', fontSize: 11, fontWeight: '600' },
-  chartTabTextMainActive: { color: '#38bdf8' },
+  tabRow: { flexDirection: 'row', gap: 4, marginBottom: 12 },
+  tabButton: { flex: 1, backgroundColor: '#131926', paddingVertical: 8, borderRadius: 8, alignItems: 'center' },
+  activeTabButton: { backgroundColor: '#1e293b', borderWidth: 1, borderColor: '#475569' },
+  tabButtonText: { color: '#64748b', fontSize: 10, fontWeight: 'bold' },
+  activeTabButtonText: { color: '#fff' },
 
-  // LOG FİLTRELEME TERMINAL STYLES
-  logHeaderContainer: { flexDirection: 'column', gap: 8, marginBottom: 8, marginTop: 14 },
-  filterTabsRow: { flexDirection: 'row', gap: 4 },
-  filterTabButton: { backgroundColor: '#0f172a', paddingHorizontal: 8, paddingVertical: 4, borderRadius: 4, borderWidth: 1, borderColor: '#1e293b' },
-  filterTabButtonActive: { borderColor: '#00E5B0', backgroundColor: '#1e293b' },
-  filterTabText: { color: '#64748b', fontSize: 9, fontWeight: 'bold' },
-  filterTabTextActive: { color: '#00E5B0' },
+  chartWrapper: { backgroundColor: '#131926', borderRadius: 12, padding: 12, marginBottom: 14 },
+  chartTitle: { fontSize: 12, color: '#94a3b8', fontWeight: '600' },
 
-  // P2P PROVISIONER STYLES
-  p2pProvisionerBox: { backgroundColor: '#0f172a', padding: 12, borderRadius: 12, marginBottom: 4, borderWidth: 1, borderColor: '#1e293b', marginTop: 12 },
-  p2pTitle: { color: '#cbd5e1', fontSize: 11, fontWeight: 'bold' },
-  p2pButton: { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 6, paddingVertical: 10, borderRadius: 8, borderWidth: 1, marginTop: 6 },
-  p2pButtonText: { color: '#fff', fontSize: 11, fontWeight: 'bold' },
-  discoveredNodesList: { marginTop: 10, gap: 6 },
-  nodeRow: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', backgroundColor: '#1e293b', padding: 8, borderRadius: 8, borderWidth: 1, borderColor: '#334155' },
-  nodeRowSubInfo: { color: '#64748b', fontSize: 9, marginTop: 1 },
-  nodeNameText: { color: '#f8fafc', fontSize: 11, fontWeight: 'bold' },
-  nodeRssiText: { color: '#94a3b8', fontSize: 10, fontFamily: 'monospace' },
-  nodeStatusText: { fontSize: 10, fontWeight: 'bold' },
+  card: { backgroundColor: '#131926', borderRadius: 12, padding: 14, marginBottom: 14 },
+  cardTitleText: { fontSize: 13, fontWeight: '700', color: '#fff' },
 
-  healthGrid: { gap: 8, marginBottom: 12 },
-  healthItem: { flexDirection: 'row', alignItems: 'center', gap: 8 },
-  healthLabel: { color: '#cbd5e1', fontSize: 12, width: 110 },
-  healthBarBg: { flex: 1, height: 8, backgroundColor: '#334155', borderRadius: 4, overflow: 'hidden' },
-  healthBarFill: { height: '100%', borderRadius: 4 },
-  healthValue: { fontSize: 12, fontWeight: 'bold', width: 40, textAlign: 'right' },
-  qualityBox: { flexDirection: 'row', alignItems: 'center', gap: 8, marginTop: 4, paddingTop: 12, borderTopWidth: 1, borderTopColor: '#334155' },
-  qualityText: { fontSize: 12, fontWeight: '600' },
+  scanButton: { backgroundColor: '#2563eb', paddingHorizontal: 10, paddingVertical: 4, borderRadius: 6, flexDirection: 'row', alignItems: 'center', gap: 4 },
+  scanButtonText: { color: '#fff', fontSize: 11, fontWeight: 'bold' },
+  nodeRow: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', backgroundColor: '#0f172a', padding: 10, borderRadius: 8, marginTop: 8 },
+  nodeName: { color: '#fff', fontSize: 12, fontWeight: '600' },
+  nodeMeta: { color: '#64748b', fontSize: 10, marginTop: 1 },
 
-  miniBadge: { paddingVertical: 3, paddingHorizontal: 8, borderRadius: 10 },
+  miniBadge: { paddingVertical: 3, paddingHorizontal: 6, borderRadius: 6 },
   miniBadgeOk: { backgroundColor: '#064e3b' },
-  miniBadgeWarn: { backgroundColor: '#451a03' },
-  miniBadgeText: { fontSize: 10, fontWeight: 'bold', color: '#e2e8f0' },
-  testRow: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 10 },
+  miniBadgeText: { fontSize: 9, fontWeight: 'bold', color: '#fff' },
+
+  testRow: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginTop: 10 },
   testLeft: { flexDirection: 'row', alignItems: 'center', gap: 8 },
-  testRight: { alignItems: 'flex-end' },
-  testDetail: { color: '#64748b', fontSize: 10, marginTop: 2 },
   dot: { width: 8, height: 8, borderRadius: 4 },
+  testLabel: { color: '#fff', fontSize: 12, fontWeight: '500' },
+  testDetail: { color: '#64748b', fontSize: 10, marginTop: 1 },
+  statusText: { fontSize: 11, fontWeight: 'bold' },
 
-  consensusRow: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'baseline', marginBottom: 12 },
-  consensusStatus: { fontSize: 20, fontWeight: 'bold' },
-  consensusSub: { color: '#94a3b8', fontSize: 12 },
-
-  scienceCard: { borderColor: '#5b21b6', backgroundColor: '#13112c', borderWidth: 1 },
-  scienceBadge: { backgroundColor: '#3b0764', paddingVertical: 2, paddingHorizontal: 6, borderRadius: 6 },
-  scienceBadgeText: { color: '#c084fc', fontSize: 9, fontWeight: 'bold' },
-  scienceText: { color: '#e2e8f0', fontSize: 13, lineHeight: 18 },
-  scienceMetricsFooterGrid: { flexDirection: 'row', flexWrap: 'wrap', gap: 12, marginTop: 10, paddingTop: 8, borderTopWidth: 1, borderTopColor: '#3b0764' },
-  scienceSubText_v2: { color: '#a78bfa', fontSize: 10, fontWeight: 'bold' },
+  terminalBox: { height: 140, backgroundColor: '#090d16', borderRadius: 8, padding: 10, marginTop: 10 },
+  logText: { color: '#34d399', fontFamily: Platform.OS === 'ios' ? 'Courier' : 'monospace', fontSize: 10, marginBottom: 4 },
+  emptyLog: { color: '#475569', fontSize: 11, textAlign: 'center', marginTop: 40 }
 });

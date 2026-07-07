@@ -2,10 +2,10 @@
  * BleContext — Global BLE singleton + Mesh Engine for ORBIT-MESH.
  *
  * Architecture:
- *  - Module-level `_manager` (BleManager) created exactly once.
- *  - React context exposes BLE state + mesh engine (baseline, anomaly, consensus).
- *  - Connection and subscription survive screen navigation.
- *  - Screens only READ; all BLE logic lives here.
+ * - Module-level `_manager` (BleManager) created exactly once.
+ * - React context exposes BLE state + mesh engine (baseline, anomaly, consensus).
+ * - Connection and subscription survive screen navigation.
+ * - Screens only READ; all BLE logic lives here.
  */
 
 import React, {
@@ -28,6 +28,10 @@ import {
   getConsensus,
 } from "@/services/meshConsensus";
 import type { ConsensusResult } from "@/services/meshConsensus";
+
+// ── [A] PQC ENTEGRASYON IMPORTLARI ────────────────────────────────────────
+import { pqcManager } from "@/services/pqcEngine";
+import type { PQCPacket } from "@/services/pqcEngine";
 
 // ── BleManager singleton ───────────────────────────────────────────────────
 type BleManagerType = import("react-native-ble-plx").BleManager;
@@ -104,6 +108,14 @@ export interface BleContextValue {
   consensus: ConsensusResult;
   meshNodes: MeshNodeStatus[];
   nodeMoving: boolean;
+  // ── [B] PQC GÜVENLİK DURUMU TİPİ ─────────────────────────────────────────
+  pqcStatus: {
+    totalNodes: number;
+    pqcActiveNodes: string[];
+    recentVerifications: number;
+    recentFailures: number;
+    failureRate: number;
+  };
   // Actions
   requestPermissions(): Promise<boolean>;
   startScan(): void;
@@ -471,24 +483,86 @@ export function BleProvider({ children }: { children: React.ReactNode }) {
               const b64 = characteristic.value ?? "";
               addLog("scan", `[BASE64] ${b64}`);
 
-              const parsed = parseTelemetry(b64);
+              // ── [C] PQC DOĞRULAMA KATMANI BAŞLANGICI ───────────────────────
+              // Ham base64'ü UTF-8'e çevir
+              let rawJson: string;
+              try {
+                rawJson = atob(b64.replace(/\s/g, ""));
+              } catch {
+                addLog("error", "[PQC] base64 decode hatası");
+                return;
+              }
+
+              // PQC paketi mi yoksa legacy JSON mu?
+              let telemetryJson = rawJson;
+              let pqcActive = false;
+              let pqcValid = true;
+
+              // PQC formatı: {"__pqc":true,"mac":[...],"counter":N,"payload":"...","sessionId":"..."}
+              if (rawJson.includes('"__pqc"')) {
+                let pqcPacket: PQCPacket;
+                try {
+                  pqcPacket = JSON.parse(rawJson) as PQCPacket;
+                } catch {
+                  addLog("error", "[PQC] Paket parse hatası — düşürüldü");
+                  return;
+                }
+
+                // Node ID'yi geçici olarak paketin payload'undan al
+                let tempNodeId = "ORBIT-UNKNOWN";
+                try {
+                  const tempPayload = JSON.parse(pqcPacket.payload);
+                  tempNodeId = tempPayload.nodeId ?? tempNodeId;
+                } catch { /* nodeId bilinmiyor, geçici ID kullan */ }
+
+                const verifyResult = pqcManager.verifyPacket(tempNodeId, pqcPacket);
+                pqcActive = true;
+
+                if (!verifyResult.valid) {
+                  // ⛔ SAHTE / MANİPÜLE PAKET — işleme alma
+                  addLog("error", `[PQC] ⛔ DOĞRULAMA BAŞARISIZ [${tempNodeId}]: ${verifyResult.reason}`);
+                  return;
+                }
+
+                pqcValid = true;
+                telemetryJson = verifyResult.decryptedPayload ?? pqcPacket.payload;
+                addLog("info", `[PQC] ✓ Paket doğrulandı [${tempNodeId}] — sayaç: ${pqcPacket.counter}`);
+              } else {
+                // Legacy (şifresiz) format
+                addLog("info", "[PQC] Legacy paket — PQC yok, geçiriliyor");
+              }
+
+              // ── Standart Telemetri Parse ───────────────────────────────────
+              // parseTelemetry base64 bekliyor — doğrulanmış JSON'u tekrar base64'e sar
+              const verifiedB64 = btoa(telemetryJson);
+              const parsed = parseTelemetry(verifiedB64);
 
               if (!parsed.data) {
                 addLog("error", `[PARSE] ${parsed.error}`);
                 return;
               }
-              addLog("info", `[PARSED] ${JSON.stringify(parsed.data)}`);
 
-              if (!parsed.data) return;
+              addLog(
+                "info",
+                `[PARSED${pqcActive ? "+PQC✓" : ""}] ${JSON.stringify(parsed.data)}`,
+              );
 
               const t = parsed.data;
+
+              // PQC durumunu node'a işaretle (diagnostics için)
+              if (pqcActive && pqcValid) {
+                // Node'u PQC-aktif olarak işaretle (PQCSessionManager zaten biliyor)
+                pqcManager.getOrCreateSession(t.nodeId);
+              }
+
               addLog(
                 t.anomaly ? "warn" : "info",
-                `Telemetri: nodeId=${t.nodeId} vlf=${t.vlf_hz.toFixed(2)}Hz amp=${t.vlf_amplitude.toFixed(3)} bat=${t.battery}% temp=${t.temp_c}°C${t.anomaly ? " ⚠ ANOMALİ" : ""}`,
+                `Telemetri: nodeId=${t.nodeId} vlf=${t.vlf_hz.toFixed(2)}Hz amp=${t.vlf_amplitude.toFixed(3)} bat=${t.battery}% temp=${t.temp_c}°C${t.anomaly ? " ⚠ ANOMALİ" : ""}${pqcActive ? " 🔐PQC" : ""}`,
               );
 
               setTelemetry((prev) => [t, ...prev].slice(0, 200));
               updateMeshNode(t, true);
+              // ── [C] PQC DOĞRULAMA KATMANI SONU ─────────────────────────────
             });
 
             _notifySubs.push(sub);
@@ -521,6 +595,12 @@ export function BleProvider({ children }: { children: React.ReactNode }) {
     const mgr = getManager();
     if (!mgr || !rawDeviceRef.current) return;
     const id = rawDeviceRef.current.id;
+
+    // ── [D] DISCONNECT PQC OTURUM TEMİZLİĞİ ──────────────────────────────────
+    if (rawDeviceRef.current?.name) {
+      pqcManager.removeNode(rawDeviceRef.current.name);
+    }
+
     rawDeviceRef.current
       .cancelConnection()
       .then(() => {
@@ -561,6 +641,8 @@ export function BleProvider({ children }: { children: React.ReactNode }) {
         consensus,
         meshNodes,
         nodeMoving,
+        // ── [E] CONTEXT VALUE PQC EKLEMESİ ───────────────────────────────────
+        pqcStatus: pqcManager.getSecurityStatus(),
         requestPermissions,
         startScan,
         stopScan,

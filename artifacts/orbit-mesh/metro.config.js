@@ -1,20 +1,14 @@
 const { getDefaultConfig } = require('expo/metro-config');
-const path = require('path');
 
-const projectRoot = __dirname;
-// SADECE projenin kendi dizinini ve varsa içindeki node_modules'u izle
-// Workspace kök dizinini izlemekten vazgeçtik (ENOSPC hatasını önlemek için)
-const config = getDefaultConfig(projectRoot);
+/** @type {import('expo/metro-config').MetroConfig} */
+const config = getDefaultConfig(__dirname);
 
-// Sadece proje içi klasörleri izle, üst dizinleri sınırla
-config.watchFolders = [projectRoot];
+// ── pnpm UYUMLULUK AYARLARI ──────────────────────────────────────────────────
+// pnpm sembolik bağlarını ve alt klasörleri Metro'nun görebilmesi için:
+config.resolver.disableHierarchicalLookup = false;
 
-// Modül çözünürlüğünde hiyerarşik aramayı kapat (üst klasörlere çıkmasın)
-config.resolver.disableHierarchicalLookup = true;
-
-// Paketlerin sadece projenin kendi node_modules klasöründen okunmasını zorla
-config.resolver.nodeModulesPaths = [
-  path.resolve(projectRoot, 'node_modules'),
-];
+// Eğer projenizde SVG veya ek bir transformer ayarı YOKSA dosyanız sadece bu kadar olmalıdır.
+// Eğer özel bir asset transformer (örn: react-native-svg-transformer) kullanıyorsanız, 
+// config.transformer ve config.resolver.assetExts ayarlarını bunun altına ekleyebilirsiniz.
 
 module.exports = config;
