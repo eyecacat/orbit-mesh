@@ -542,7 +542,7 @@ export default function DiagnosticsScreen() {
         <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 12 }}>
           <Text style={styles.cardTitleText}>True-Mesh Dinamik Topoloji Dağıtımı</Text>
           <Pressable onPress={startTrueMeshDiscovery} style={[styles.scanButton, isMeshScanning && { opacity: 0.6 }]} disabled={isMeshScanning}>
-            {isMeshScanning ? <ActivityIndicator size="small" color="#fff" /> : <Feather name="refresh-cw" size={12" color="#fff" />}
+            {isMeshScanning ? <ActivityIndicator size="small" color="#fff" /> : <Feather name="refresh-cw" size={12} color="#fff" />}
             <Text style={styles.scanButtonText}>{isMeshScanning ? "Taranıyor..." : "Mesh Tara"}</Text>
           </Pressable>
         </View>
