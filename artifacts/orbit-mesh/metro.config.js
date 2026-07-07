@@ -2,19 +2,19 @@ const { getDefaultConfig } = require('expo/metro-config');
 const path = require('path');
 
 const projectRoot = __dirname;
-const workspaceRoot = path.resolve(projectRoot, '../..'); // Monorepo kök dizini
-
+// SADECE projenin kendi dizinini ve varsa içindeki node_modules'u izle
+// Workspace kök dizinini izlemekten vazgeçtik (ENOSPC hatasını önlemek için)
 const config = getDefaultConfig(projectRoot);
 
-// Monorepo watchFolders — Expo'nun varsayılanlarını KORUYARAK genişlet
-// (= yerine [...spread] ile birleştir, yoksa Expo'nun kendi entry'leri
-// silinir ve "watchFolders does not contain all entries" hatası oluşur)
-config.watchFolders = [...(config.watchFolders ?? []), workspaceRoot];
+// Sadece proje içi klasörleri izle, üst dizinleri sınırla
+config.watchFolders = [projectRoot];
 
-// Paketlerin çözümleneceği node_modules öncelik sırası
+// Modül çözünürlüğünde hiyerarşik aramayı kapat (üst klasörlere çıkmasın)
+config.resolver.disableHierarchicalLookup = true;
+
+// Paketlerin sadece projenin kendi node_modules klasöründen okunmasını zorla
 config.resolver.nodeModulesPaths = [
   path.resolve(projectRoot, 'node_modules'),
-  path.resolve(workspaceRoot, 'node_modules'),
 ];
 
 module.exports = config;

@@ -16,7 +16,10 @@
     },
     "ios": {
       "supportsTablet": false,
-      "bundleIdentifier": "com.orbitmesh.orbitmesh"
+      "bundleIdentifier": "com.orbitmesh.orbitmesh",
+      "infoPlist": {
+        "ITSAppUsesNonExemptEncryption": false
+      }
     },
     "android": {
       "package": "com.orbitmesh.orbitmesh",
