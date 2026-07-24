@@ -100,7 +100,7 @@ export default function DiagnosticsScreen() {
 
   // JÜRİ MODU: Çok Kanallı Simülatör, Log Motoru ve Siber Saldırı Enjektörü
   useEffect(() => {
-    let interval: NodeJS.Timeout;
+    let interval: ReturnType<typeof setInterval>;
     if (isDemoMode) {
       interval = setInterval(() => {
         // VLF Genlik Anomalisi

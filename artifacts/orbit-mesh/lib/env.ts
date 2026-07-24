@@ -1,12 +1,14 @@
 /**
  * ORBIT-MESH Global Environment Configuration
- * * Vercel Canlı Sunucu Bağlantısı (V2)
- * Hassas API anahtarları (NASA & OpenRouter) Vercel Environment Variables 
- * üzerinde gizlenmiştir. Mobil uygulama tüm istekleri bu güvenli tünelden yapar.
+ *
+ * Lokal geliştirme sırasında aynı Replit domain'i üzerinde çalışan API server
+ * kullanılır; üretimde Vercel domain'e düşer. Bu sayede ön-yüz (web preview) ve
+ * backend aynı origin'de kalır ve CORS sorunu oluşmaz.
  */
 
-// Çalışan gerçek Vercel backend proxy adresin:
-export const BACKEND_URL = "https://orbit-mesh.vercel.app";
+export const BACKEND_URL = process.env.EXPO_PUBLIC_DOMAIN
+  ? `https://${process.env.EXPO_PUBLIC_DOMAIN}`
+  : "https://orbit-mesh.vercel.app";
 
 /**
  * Geriye Dönük Uyum Koruması (Fallback)

@@ -1,2 +1,5 @@
 - [ORBIT-MESH architecture](orbit-mesh-arch.md) — Expo mobile app for TEKNOFEST; auth is AsyncStorage-only, AI proxied through api-server, NASA DONKI called directly.
 - [Expo package versions](expo-package-versions.md) — expo-sensors and expo-sms must match Expo SDK expected versions to avoid Metro resolution failures.
+- [ORBIT-MESH backend URL](orbit-mesh-backend-url.md) — Use `EXPO_PUBLIC_DOMAIN` in dev to hit the local API server and avoid CORS; fall back to Vercel in production.
+- [Turkish satellite TLE sources](orbit-mesh-tle-sources.md) — Celestrak CATNR can be unreliable; verified NORAD IDs from geo/resource groups and a group fallback in the proxy.
+- [NASA DONKI rate-limit](nasa-donki-rate-limit.md) — DEMO_KEY returns 429; production needs a real NASA_API_KEY, backend caches and retries.

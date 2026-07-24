@@ -1,8 +1,31 @@
 uploads = []
-outputs = []
 
 [[generated]]
 id = "DyeI6jYePJ18Cc6X-wD2I"
 uri = "file://artifacts/orbit-mesh/assets/images/icon.png"
 type = "image"
 title = "generated_image"
+
+[[outputs]]
+id = "ZQqfpAQTNy-oqIDVheubK"
+uri = "file://screenshots/orbit-mesh-home-final2.jpg"
+type = "image"
+title = "ORBIT-MESH Ana Ekran - Yeni kutucuklar"
+
+[[outputs]]
+id = "wCpY_FE3N9dJ648ggbO0e"
+uri = "file://screenshots/orbit-mesh-uydular-final2.jpg"
+type = "image"
+title = "Türk Uyduları Takibi - Gerçek TLE"
+
+[[outputs]]
+id = "OJ_XYeqTq20F7ts5I5PDI"
+uri = "file://screenshots/orbit-mesh-uyari-final2.jpg"
+type = "image"
+title = "Uzay Hava Uyarıları - NOAA Kp + Uyarılar"
+
+[[outputs]]
+id = "jxuG7FHQY1PFSlBH6pvH_"
+uri = "file://screenshots/orbit-mesh-meb-final2.jpg"
+type = "image"
+title = "MEB Astronomi Modülleri"
