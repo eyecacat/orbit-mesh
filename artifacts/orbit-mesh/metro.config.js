@@ -1,14 +1,12 @@
 const { getDefaultConfig } = require('expo/metro-config');
 
-/** @type {import('expo/metro-config').MetroConfig} */
 const config = getDefaultConfig(__dirname);
 
-// ── pnpm UYUMLULUK AYARLARI ──────────────────────────────────────────────────
-// pnpm sembolik bağlarını ve alt klasörleri Metro'nun görebilmesi için:
-config.resolver.disableHierarchicalLookup = false;
-
-// Eğer projenizde SVG veya ek bir transformer ayarı YOKSA dosyanız sadece bu kadar olmalıdır.
-// Eğer özel bir asset transformer (örn: react-native-svg-transformer) kullanıyorsanız, 
-// config.transformer ve config.resolver.assetExts ayarlarını bunun altına ekleyebilirsiniz.
+config.resolver.resolveRequest = (context, moduleName, platform) => {
+  if (moduleName.startsWith('node:')) {
+    return { type: 'empty' };
+  }
+  return context.resolveRequest(context, moduleName, platform);
+};
 
 module.exports = config;
