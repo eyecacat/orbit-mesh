@@ -153,6 +153,54 @@ const MODULE_TILES: ModuleTile[] = [
     color: "#FF6B6B",
     route: "/oyun",
   },
+  {
+    id: "apod",
+    title: "Günün Fotoğrafı",
+    subtitle: "NASA APOD + Türkçe",
+    icon: "image",
+    color: "#7C3AED",
+    route: "/apod",
+  },
+  {
+    id: "iss",
+    title: "ISS Geçişleri",
+    subtitle: "Canlı uydu geçişi",
+    icon: "navigation",
+    color: "#0EA5E9",
+    route: "/iss",
+  },
+  {
+    id: "meteor",
+    title: "Meteor Takvimi",
+    subtitle: "Yağmur ve tutulmalar",
+    icon: "star",
+    color: "#F59E0B",
+    route: "/meteor",
+  },
+  {
+    id: "deneyler",
+    title: "Deneyler",
+    subtitle: "MEB uyumlu deneyler",
+    icon: "activity",
+    color: "#22C55E",
+    route: "/deneyler",
+  },
+  {
+    id: "ekosistem",
+    title: "Yerli Ekosistem",
+    subtitle: "TUA, TÜBİTAK, Türksat",
+    icon: "flag",
+    color: "#E11D48",
+    route: "/ekosistem",
+  },
+  {
+    id: "ay",
+    title: "Ay Takvimi",
+    subtitle: "Evreler ve gözlem",
+    icon: "moon",
+    color: "#A5B4FC",
+    route: "/ay",
+  },
 ];
 
 const DAILY_TASKS: DailyTask[] = [
@@ -355,6 +403,39 @@ export default function HomeScreen() {
             Astronomi yolculuğun ilerliyor.
           </Text>
         </View>
+
+        <Pressable
+          style={({ pressed }) => [
+            styles.listenCard,
+            {
+              backgroundColor: colors.card,
+              borderColor: colors.primary + "66",
+              opacity: pressed ? 0.85 : 1,
+            },
+          ]}
+          onPress={() => router.push("/ble" as any)}
+        >
+          <LinearGradient
+            colors={[colors.primary + "22", "transparent"]}
+            start={{ x: 0, y: 0 }}
+            end={{ x: 1, y: 1 }}
+            style={StyleSheet.absoluteFill}
+          />
+          <View style={styles.listenRow}>
+            <View style={[styles.listenIconWrap, { backgroundColor: colors.primary + "18" }]}>
+              <Feather name="radio" size={22} color={colors.primary} />
+            </View>
+            <View style={{ flex: 1 }}>
+              <Text style={[styles.listenTitle, { color: colors.foreground }]}>
+                Uzayı Dinlemek İçin Bir Kart Yeter
+              </Text>
+              <Text style={[styles.listenDesc, { color: colors.mutedForeground }]}>
+                Deneyap Kart ile VLF sinyallerini ve uzay havası etkilerini gerçek zamanlı izle.
+              </Text>
+            </View>
+            <Feather name="chevron-right" size={18} color={colors.mutedForeground} />
+          </View>
+        </Pressable>
 
         <View style={styles.statsRow}>
           <View style={[styles.statCard, { backgroundColor: colors.card, borderColor: colors.border }]}>
@@ -797,6 +878,36 @@ const styles = StyleSheet.create({
   aiPillText: {
     fontSize: 11,
     fontFamily: "Inter_600SemiBold",
+  },
+  listenCard: {
+    marginHorizontal: 20,
+    borderRadius: 18,
+    borderWidth: 1,
+    padding: 16,
+    marginBottom: 20,
+    overflow: "hidden",
+  },
+  listenRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 12,
+  },
+  listenIconWrap: {
+    width: 46,
+    height: 46,
+    borderRadius: 23,
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  listenTitle: {
+    fontSize: 15,
+    fontFamily: "Inter_700Bold",
+  },
+  listenDesc: {
+    marginTop: 2,
+    fontSize: 12,
+    lineHeight: 18,
+    fontFamily: "Inter_400Regular",
   },
   tasksCard: {
     marginHorizontal: 20,

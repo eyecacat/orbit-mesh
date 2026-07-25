@@ -47,3 +47,45 @@ id = "ENklv1EKxkvH4r07w0Iwc"
 uri = "file://screenshots/uyari-turkce-ceviri-3.jpg"
 type = "image"
 title = "Uyarı Merkezi - Türkçe Çeviri (Güncel)"
+
+[[outputs]]
+id = "h-dbaqSp_KgoWtbdw4Ah-"
+uri = "file://screenshots/ana-sayfa-yeni-kartlar.jpg"
+type = "image"
+title = "Ana Sayfa - Yeni Kartlar ve Slogan"
+
+[[outputs]]
+id = "30se7qtFxXT_tINwG16ss"
+uri = "file://screenshots/apod-ekrani.jpg"
+type = "image"
+title = "APOD - Günün Astronomi Fotoğrafı"
+
+[[outputs]]
+id = "JJqjoK_UDS2hXKP_SQvLC"
+uri = "file://screenshots/meteor-takvimi.jpg"
+type = "image"
+title = "Meteor ve Gökyüzü Olayları"
+
+[[outputs]]
+id = "nBT0kNSYSvX2B6XrX5MNH"
+uri = "file://screenshots/deneyler-rehberi.jpg"
+type = "image"
+title = "Öğrenci Deney Rehberi"
+
+[[outputs]]
+id = "zG0kb9qNOU_ZHtb3lgbtq"
+uri = "file://screenshots/yerli-uzay-ekosistemi.jpg"
+type = "image"
+title = "Yerli Uzay Ekosistemi"
+
+[[outputs]]
+id = "NMZlFYthUh69qkTeiRbGl"
+uri = "file://screenshots/iss-gecisleri.jpg"
+type = "image"
+title = "ISS Geçiş Takibi"
+
+[[outputs]]
+id = "zvirSJv6fhKCF483tTW8_"
+uri = "file://screenshots/ay-takvimi.jpg"
+type = "image"
+title = "Ay Takvimi"

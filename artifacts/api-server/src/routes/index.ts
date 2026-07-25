@@ -5,6 +5,7 @@ import satellitesRouter from "./satellites";
 import spaceWeatherRouter from "./space-weather";
 import nasaRouter from "./nasa";
 import openrouterRouter from "./openrouter";
+import apodRouter from "./apod";
 
 const router: IRouter = Router();
 
@@ -14,5 +15,6 @@ router.use(satellitesRouter);
 router.use(spaceWeatherRouter);
 router.use(nasaRouter);
 router.use(openrouterRouter);
+router.use(apodRouter);
 
 export default router;
