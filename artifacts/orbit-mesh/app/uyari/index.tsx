@@ -44,6 +44,9 @@ export default function UyariScreen() {
   const [solarEvents, setSolarEvents] = useState<SolarEvent[]>([]);
   const [loadingSolar, setLoadingSolar] = useState(true);
   const [solarError, setSolarError] = useState(false);
+  const [translatedAlerts, setTranslatedAlerts] = useState<string[]>([]);
+  const [translatedEvents, setTranslatedEvents] = useState<string[]>([]);
+  const [translating, setTranslating] = useState(false);
 
   useEffect(() => {
     void fetchWeather();
@@ -108,6 +111,58 @@ export default function UyariScreen() {
     }
   }
 
+  async function translateToTurkish(alerts: string[], events: string[]) {
+    const allTexts = [...alerts, ...events].filter(Boolean);
+    if (allTexts.length === 0) return;
+    setTranslating(true);
+    try {
+      const res = await fetch(`${BACKEND_URL}/api/openrouter`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          model: "openai/gpt-4o-mini",
+          messages: [
+            {
+              role: "system",
+              content:
+                "Ortaokul öğrencisinin anlayacağı açık, doğal Türkçe ile aşağıdaki uzay hava durumu uyarı ve etkinlik metinlerini çevir. Teknik terimleri yalın tut. SADECE çevirileri içeren JSON dizisi döndür: [\"çeviri1\", \"çeviri2\", ...]. Başka açıklama ekleme.",
+            },
+            { role: "user", content: JSON.stringify(allTexts) },
+          ],
+          temperature: 0.2,
+        }),
+      });
+      if (!res.ok) throw new Error("Çeviri başarısız");
+      const data = await res.json();
+      const content = data?.choices?.[0]?.message?.content || "";
+      let translations: string[] = [];
+      try {
+        translations = JSON.parse(content);
+      } catch {
+        // Model JSON dışı metin ürettiyse, orijinal metinleri koru
+      }
+      if (!Array.isArray(translations) || translations.length !== allTexts.length) {
+        translations = allTexts;
+      }
+      setTranslatedAlerts(translations.slice(0, alerts.length));
+      setTranslatedEvents(translations.slice(alerts.length));
+    } catch {
+      setTranslatedAlerts(alerts);
+      setTranslatedEvents(events);
+    } finally {
+      setTranslating(false);
+    }
+  }
+
+  useEffect(() => {
+    if (weather && !loading && !loadingSolar) {
+      const alertMessages = weather.alerts.map(a => a.message);
+      const eventNotes = solarEvents.map(e => e.classOrNote);
+      void translateToTurkish(alertMessages, eventNotes);
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [weather, solarEvents, loading, loadingSolar]);
+
   const kpLevel = (kp: number | null) => {
     if (kp === null || kp === undefined) return { label: "Bilinmiyor", color: colors.mutedForeground };
     if (kp < 4) return { label: "Sakin", color: colors.accent };
@@ -135,7 +190,7 @@ export default function UyariScreen() {
         </View>
 
         <Text style={[styles.subtitle, { color: colors.mutedForeground }]}>
-          NOAA SWPC ve NASA DONKI'den gerçek zamanlı uzay hava durumu.
+          NOAA SWPC ve NASA DONKI'den gerçek zamanlı uzay hava durumu; OpenRouter AI ile otomatik Türkçe'ye çevrilir.
         </Text>
 
         <View
@@ -176,7 +231,10 @@ export default function UyariScreen() {
         </View>
 
         <View style={[styles.card, { backgroundColor: colors.card, borderColor: colors.border }]}>
-          <Text style={[styles.cardTitle, { color: colors.foreground }]}>NOAA Uyarıları</Text>
+          <View style={styles.cardHeaderRow}>
+            <Text style={[styles.cardTitle, { color: colors.foreground }]}>NOAA Uyarıları</Text>
+            {translating && <ActivityIndicator size="small" color={colors.primary} />}
+          </View>
           {loading ? (
             <ActivityIndicator color={colors.primary} style={{ marginVertical: 16 }} />
           ) : error ? (
@@ -192,7 +250,7 @@ export default function UyariScreen() {
                 <Feather name="alert-triangle" size={16} color={colors.warning} />
                 <View style={{ flex: 1 }}>
                   <Text style={[styles.alertText, { color: colors.foreground }]}>
-                    {alert.message}
+                    {translatedAlerts[idx] || alert.message}
                   </Text>
                   {alert.issue_datetime ? (
                     <Text style={[styles.alertTime, { color: colors.mutedForeground }]}>
@@ -210,7 +268,10 @@ export default function UyariScreen() {
         </View>
 
         <View style={[styles.card, { backgroundColor: colors.card, borderColor: colors.border }]}>
-          <Text style={[styles.cardTitle, { color: colors.foreground }]}>NASA Güneş Etkinlikleri</Text>
+          <View style={styles.cardHeaderRow}>
+            <Text style={[styles.cardTitle, { color: colors.foreground }]}>NASA Güneş Etkinlikleri</Text>
+            {translating && <ActivityIndicator size="small" color={colors.primary} />}
+          </View>
           {loadingSolar ? (
             <ActivityIndicator color={colors.primary} style={{ marginVertical: 16 }} />
           ) : solarError ? (
@@ -218,7 +279,7 @@ export default function UyariScreen() {
               NASA verisi alınamadı.
             </Text>
           ) : solarEvents.length > 0 ? (
-            solarEvents.map(event => (
+            solarEvents.map((event, idx) => (
               <View key={event.id} style={[styles.eventRow, { borderColor: colors.border }]}>
                 <View
                   style={[
@@ -240,7 +301,7 @@ export default function UyariScreen() {
                 </View>
                 <View style={{ flex: 1 }}>
                   <Text style={[styles.eventNote, { color: colors.foreground }]}>
-                    {event.classOrNote}
+                    {translatedEvents[idx] || event.classOrNote}
                   </Text>
                   <Text style={[styles.eventTime, { color: colors.mutedForeground }]}>
                     {new Date(event.time).toLocaleString("tr-TR")}
@@ -270,6 +331,12 @@ export default function UyariScreen() {
 
 const styles = StyleSheet.create({
   root: { flex: 1 },
+  cardHeaderRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "space-between",
+    marginBottom: 12,
+  },
   header: {
     flexDirection: "row",
     alignItems: "center",

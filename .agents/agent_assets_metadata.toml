@@ -29,3 +29,21 @@ id = "jxuG7FHQY1PFSlBH6pvH_"
 uri = "file://screenshots/orbit-mesh-meb-final2.jpg"
 type = "image"
 title = "MEB Astronomi Modülleri"
+
+[[outputs]]
+id = "O8W0QI07755kQEZOArLPP"
+uri = "file://screenshots/orbit-mesh-home.jpg"
+type = "image"
+title = "ORBIT-MESH Ana Ekran"
+
+[[outputs]]
+id = "VdtTEdavy5TFWe7-CbrW4"
+uri = "file://screenshots/uyari-turkce-ceviri-2.jpg"
+type = "image"
+title = "Uyarı Merkezi - Türkçe Çeviri"
+
+[[outputs]]
+id = "ENklv1EKxkvH4r07w0Iwc"
+uri = "file://screenshots/uyari-turkce-ceviri-3.jpg"
+type = "image"
+title = "Uyarı Merkezi - Türkçe Çeviri (Güncel)"
