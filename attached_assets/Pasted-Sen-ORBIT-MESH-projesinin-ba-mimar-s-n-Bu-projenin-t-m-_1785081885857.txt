@@ -1,0 +1,62 @@
+Sen ORBIT-MESH projesinin baş mimarısın. Bu projenin tüm teknik detaylarını, 
+dosya yapısını, veri akışını ve eksikliklerini bana anlat. Aşağıdaki her 
+başlık için sırayla ve detaylı şekilde açıklama yap:
+
+1. DOSYA YAPISI
+- artifacts/ altındaki tüm klasörler ve ne işe yaradıkları
+- app/(tabs)/ altındaki her ekran dosyası ve amacı
+- lib/ veya context/ altındaki tüm servis/context dosyaları
+- api/ veya server/ altındaki backend dosyaları
+
+2. VERİ AKIŞI
+- BLE'den gelen ham paketin tam JSON formatı (gerçek örnek ver)
+- Bu paketin BleContext'te nasıl parse edildiği (ilgili kod satırları)
+- Parse edilen verinin hangi ekranlara nasıl aktığı
+- anomalyEngine'in getCurrentScore fonksiyonu ne döndürüyor şu an (dummy mu, gerçek mi?)
+
+3. HER EKRANIN DURUMU
+Şu ekranların her biri için: mevcut durum (çalışıyor/kısmen/broken), 
+hangi veriyi kullanıyor, hangi API'yi çağırıyor:
+- app/(tabs)/index.tsx (Dashboard)
+- ble/index.tsx
+- mesh/index.tsx
+- earthsign/index.tsx
+- helio/index.tsx
+- auet/index.tsx
+- atlas.tsx
+- missions.tsx
+- hayatagi.tsx
+- sohbet.tsx
+- acil/index.tsx
+
+4. BACKEND & API DURUMU
+- Express API'deki tüm route'lar ve durumları
+- Vercel'e deploy edilmiş fonksiyonlar hangileri
+- Hangi environment variable'lar gerekiyor (NASA_API_KEY, OPENROUTER_KEY vb.)
+- EXPO_PUBLIC_DOMAIN nasıl set edilmeli
+
+5. BLE & DONANIM ENTEGRASYONU
+- BleContext singleton'ının tam implementasyonu
+- SERVICE_UUID ve CHARACTERISTIC_UUID değerleri (firmware ile eşleşiyor mu?)
+- PQC paket sarmalayıcı (__pqc: true formatı) app tarafında açılıyor mu?
+- EAS build için ne gerekiyor (app.json, eas.json içeriği)
+
+6. KRİTİK EKSİKLİKLER VE TODO'LAR
+- anomalyEngine'deki dummy/placeholder kodlar hangi satırlarda
+- Auth sistemi gerçek mi mock mu
+- AsyncStorage'da ne saklanıyor, şeması nedir
+- meshConsensus gerçek veri mi dummy mu
+
+7. BAĞIMLILIKLAR
+- package.json'daki tüm dependencies
+- Expo SDK versiyonu
+- Hangi native modüller var (expo-bluetooth vb.)
+
+8. TEST & ÇALIŞTIRMA
+- Projeyi local'de nasıl çalıştırırım (adım adım komutlar)
+- Expo Go'da çalışan özellikler vs EAS build gerektiren özellikler
+- Mevcut bilinen bug'lar ve hata mesajları
+
+Her başlık için önce özet ver, sonra ilgili kod bloklarını göster. 
+Eğer bir dosyayı okuman gerekiyorsa oku ve içeriğini paylaş.
+Hiçbir şeyi atlama, bu bilgi final yarışması hazırlığı için kritik.
