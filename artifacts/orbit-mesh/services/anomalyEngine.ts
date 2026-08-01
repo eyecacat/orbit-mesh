@@ -3,7 +3,9 @@
  * Multi-sensor fusion anomaly scoring per node.
  * Weights:
  *   0.40 * vlfScore
- *   0.30 * magneticScore
+ *   0.30 * magneticScore   [ŞEMA-PATCH] İsim tarihseldir; gerçek girdi
+ *                          jiroskop (gx/gy/gz, deg/s) normudur — cihazda
+ *                          manyetometre yok. Bkz. magMag() JSDoc'u.
  *   0.20 * thermalScore
  *   0.10 * seismicScore
  *
@@ -37,8 +39,17 @@ function zscoreToScore(z: number): number {
   return Math.min(100, Math.max(0, z * z * 11.1));
 }
 
+/**
+ * [ŞEMA-PATCH] Fonksiyon adı "magMag" olarak kalmıştır ama girdi artık
+ * jiroskop (açısal hız, deg/s) verisidir — cihazda (MPU6050) manyetometre
+ * yok. `magneticScore` alan adı da UI'da doğrudan kullanıldığı için (mesh/ble
+ * ekranlarında "Mag" etiketi) bilinçli olarak değiştirilmedi; ancak artık
+ * gerçekte titreşim/dönme (rotational motion) anomalisini ölçüyor, gerçek
+ * manyetik alan bozulmasını DEĞİL. Jüri sorusuna karşı: bu skor artık
+ * "jiroskop-türevi hareket anomalisi" olarak anlaşılmalı.
+ */
 function magMag(t: NodeTelemetry): number {
-  return Math.sqrt(t.mx * t.mx + t.my * t.my + t.mz * t.mz);
+  return Math.sqrt(t.gx * t.gx + t.gy * t.gy + t.gz * t.gz);
 }
 
 function motionMag(t: NodeTelemetry): number {

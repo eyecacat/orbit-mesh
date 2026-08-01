@@ -5,15 +5,19 @@ export interface NodeTelemetry {
   vlf_amplitude: number;
   battery: number;
   temp_c: number;
-  mx: number;
-  my: number;
-  mz: number;
+  // [ŞEMA-PATCH] Önceden "mx/my/mz" (manyetometre çağrışımlı) idi. Cihazda
+  // (MPU6050) manyetometre yok; veri her zaman jiroskoptu (deg/s cinsinden
+  // açısal hız). Firmware ve buradaki isim artık eşleşiyor — bkz.
+  // ORBIT_MESH_PRO_V2_FIXED.ino buildBleTelemetry() [ŞEMA-PATCH].
+  gx: number;
+  gy: number;
+  gz: number;
   ax: number;
   ay: number;
   az: number;
   anomaly: boolean;
   receivedAt: number;
- 
+
   // ── Bilimsel güvenilirlik alanları (opsiyonel) ─────────────────────────
   // Bu alanlar firmware'in genişletilmiş (tam) JSON'unda bulunur. APK'nın
   // kısa BLE JSON'unda olmayabilir (MTU/boyut kısıtı), bu yüzden hepsi
@@ -31,7 +35,7 @@ export interface NodeTelemetry {
   battery_pct?: number;
   education_message?: string;
 }
- 
+
 export function base64ToUtf8(base64: string): string {
   try {
     const binary = atob(base64.replace(/\s/g, ""));
@@ -40,7 +44,7 @@ export function base64ToUtf8(base64: string): string {
     return "";
   }
 }
- 
+
 function createEmptyTelemetry(): NodeTelemetry {
   return {
     nodeId: "ORBIT-MESH",
@@ -49,9 +53,9 @@ function createEmptyTelemetry(): NodeTelemetry {
     vlf_amplitude: 0,
     battery: 0,
     temp_c: 0,
-    mx: 0,
-    my: 0,
-    mz: 0,
+    gx: 0,
+    gy: 0,
+    gz: 0,
     ax: 0,
     ay: 0,
     az: 0,
@@ -59,30 +63,30 @@ function createEmptyTelemetry(): NodeTelemetry {
     receivedAt: Date.now(),
   };
 }
- 
+
 function parseTextTelemetry(raw: string): NodeTelemetry {
   const t = createEmptyTelemetry();
- 
+
   t.anomaly =
     raw.includes("FAULT") || raw.includes("ALERT") || raw.includes("ANOMALY");
- 
+
   const lvl = raw.match(/LVL=([A-Z_]+)/);
   if (lvl?.[1] === "FAULT") {
     t.anomaly = true;
   }
- 
+
   const ai = raw.match(/AI=[A-Z_]+\(([0-9.]+)\)/);
- 
+
   if (ai) {
     t.vlf_amplitude = Number(ai[1]) * 100;
   }
- 
+
   return t;
 }
- 
+
 function parseJsonTelemetry(raw: string): NodeTelemetry {
   const p = JSON.parse(raw);
- 
+
   return {
     nodeId: String(p.nodeId ?? p.id ?? "ORBIT-MESH"),
     timestamp: Number(p.timestamp ?? Date.now()),
@@ -90,15 +94,18 @@ function parseJsonTelemetry(raw: string): NodeTelemetry {
     vlf_amplitude: Number(p.vlf_amplitude ?? 0),
     battery: Number(p.battery ?? 0),
     temp_c: Number(p.temp_c ?? 0),
-    mx: Number(p.mx ?? 0),
-    my: Number(p.my ?? 0),
-    mz: Number(p.mz ?? 0),
+    // [ŞEMA-PATCH] gx/gy/gz birincil; p.mx/my/mz fallback'i SADECE henüz eski
+    // firmware'le çalışan (reflash edilmemiş) sahadaki cihazlarla geriye dönük
+    // uyumluluk için var. Tüm node'lar güncellendiğinde bu fallback kaldırılabilir.
+    gx: Number(p.gx ?? p.mx ?? 0),
+    gy: Number(p.gy ?? p.my ?? 0),
+    gz: Number(p.gz ?? p.mz ?? 0),
     ax: Number(p.ax ?? 0),
     ay: Number(p.ay ?? 0),
     az: Number(p.az ?? 0),
     anomaly: Boolean(p.anomaly),
     receivedAt: Date.now(),
- 
+
     // Sağlık/güvenilirlik alanları — firmware gönderiyorsa yakala,
     // göndermiyorsa undefined kalır (UI bunu "veri yok" olarak yorumlar).
     input_fault: p.input_fault !== undefined ? Boolean(p.input_fault) : undefined,
@@ -114,7 +121,7 @@ function parseJsonTelemetry(raw: string): NodeTelemetry {
     education_message: typeof p.education_message === "string" ? p.education_message : undefined,
   };
 }
- 
+
 export function parseTelemetry(base64Value: string) {
   // Güvenlik: 10KB'dan büyük BLE paketleri reddet (normal paket < 1KB)
   if (base64Value.length > 13000) {
@@ -122,7 +129,7 @@ export function parseTelemetry(base64Value: string) {
   }
   try {
     const raw = base64ToUtf8(base64Value).trim();
- 
+
     if (!raw) {
       return {
         data: null,
@@ -130,14 +137,14 @@ export function parseTelemetry(base64Value: string) {
         error: "Boş payload",
       };
     }
- 
+
     if (raw.startsWith("{")) {
       return {
         data: parseJsonTelemetry(raw),
         raw,
       };
     }
- 
+
     return {
       data: parseTextTelemetry(raw),
       raw,
@@ -150,17 +157,24 @@ export function parseTelemetry(base64Value: string) {
     };
   }
 }
- 
+
+/**
+ * [ŞEMA-PATCH] İsim tarihsel nedenlerle "magneticMagnitude" kalmıştır (UI
+ * ekranlarında bu isimle çağrılıyor olabilir — dosyaları görmediğimiz için
+ * güvenli tarafta kalınıp isim değiştirilmedi). Ancak hesaplanan büyüklük
+ * artık gerçek fiziğiyle örtüşüyor: jiroskop (açısal hız) normu, ‖ω‖ =
+ * √(gx²+gy²+gz²), deg/s cinsinden. Manyetometre bu cihazda yok.
+ */
 export function magneticMagnitude(t: NodeTelemetry) {
-  return Math.sqrt(t.mx * t.mx + t.my * t.my + t.mz * t.mz);
+  return Math.sqrt(t.gx * t.gx + t.gy * t.gy + t.gz * t.gz);
 }
- 
+
 export function motionMagnitude(t: NodeTelemetry) {
   return Math.sqrt(t.ax * t.ax + t.ay * t.ay + t.az * t.az);
 }
- 
+
 export function isNodeMoving(t: NodeTelemetry, threshold = 0.3) {
   const mag = motionMagnitude(t);
   return Math.abs(mag - 1) > threshold;
 }
- 
+
