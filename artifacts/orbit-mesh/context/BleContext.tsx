@@ -128,6 +128,9 @@ export interface BleContextValue {
 const BleContext = createContext<BleContextValue | null>(null);
 
 const SERVICE_UUID = "12345678-1234-1234-1234-123456789abc";
+// [ZAMAN-PATCH] Firmware'deki COMMAND_UUID ile birebir (ORBIT_MESH_PRO_V2_FIXED.ino satır 69).
+// Komut yazma altyapısı önceden yoktu — sadece notifiable karakteristiklere abone olunuyordu.
+const COMMAND_UUID = "abcdefab-cdef-abcd-efab-cdefabcdefac";
 const ORBIT_NAME_PREFIX = "ORBIT-MESH";
 const SCAN_TIMEOUT = 15000;
 
@@ -422,6 +425,44 @@ export function BleProvider({ children }: { children: React.ReactNode }) {
     rawDeviceRef.current = null;
   }
 
+  // ── [ZAMAN-PATCH] Komut yazma altyapısı ──────────────────────────────────
+  // Önceden bu dosyada hiç write çağrısı yoktu; sadece notifiable karakteristiklere
+  // abone olunuyordu. sendCommand() firmware'in COMMAND_UUID karakteristiğine
+  // (WRITE) düz metin komut yazar. react-native-ble-plx write metodları base64
+  // bekler — atob/btoa bu dosyada zaten kullanılıyor (satır 490, 537), aynı
+  // desen korunuyor.
+  const sendCommand = useCallback(
+    async (text: string) => {
+      const raw = rawDeviceRef.current;
+      if (!raw) {
+        addLog("warn", `Komut gönderilemedi (bağlantı yok): ${text}`);
+        return;
+      }
+      try {
+        const b64 = btoa(text);
+        await raw.writeCharacteristicWithResponseForService(
+          SERVICE_UUID,
+          COMMAND_UUID,
+          b64,
+        );
+        addLog("info", `[CMD→] ${text}`);
+      } catch (err: any) {
+        // Eski firmware COMMAND_UUID'i desteklemiyor olabilir — sessizce düş,
+        // cihaz zaten kendi fallback mantığında (örn. epochValid=false) kalır.
+        addLog("warn", `[CMD] Gönderilemedi "${text}": ${err?.message ?? err}`);
+      }
+    },
+    [addLog],
+  );
+
+  // Bağlantı kurulup servis/karakteristik keşfi bittiği an cihaz saatini
+  // gerçek unix epoch ile senkronize eder (firmware SET_TIME komutu — bkz.
+  // phaseAutoUpdate() / [ZAMAN-PATCH] ORBIT_MESH_PRO_V2_FIXED.ino).
+  const syncDeviceTime = useCallback(async () => {
+    const epochSec = Math.floor(Date.now() / 1000);
+    await sendCommand(`SET_TIME:${epochSec}`);
+  }, [sendCommand]);
+
   // ── Connect ─────────────────────────────────────────────────────────────
   const connectToDevice = useCallback(
     async (device: BleDeviceInfo) => {
@@ -490,6 +531,18 @@ export function BleProvider({ children }: { children: React.ReactNode }) {
                 rawJson = atob(b64.replace(/\s/g, ""));
               } catch {
                 addLog("error", "[PQC] base64 decode hatası");
+                return;
+              }
+
+              // ── [ZAMAN-PATCH] COMMAND_UUID yanıtları düz metindir ────────
+              // (örn. "TIME_SET=1735762800,PHASE=DAY", "TIME_INVALID") — JSON
+              // telemetri değildir, parseTelemetry'ye verilirse anlamsız
+              // [PARSE] hatası üretir. Burada ayrıca ele alınır.
+              if (ch.uuid.toLowerCase() === COMMAND_UUID.toLowerCase()) {
+                addLog(
+                  rawJson.startsWith("TIME_INVALID") ? "warn" : "info",
+                  `[CMD←] ${rawJson}`,
+                );
                 return;
               }
 
@@ -580,6 +633,12 @@ export function BleProvider({ children }: { children: React.ReactNode }) {
             "Notifiable karakteristik bulunamadı. Firmware SERVICE_UUID ile eşleşiyor mu?",
           );
         }
+
+        // [ZAMAN-PATCH] Abonelikler kurulduktan SONRA saat senkronizasyonu
+        // gönderiliyor — böylece firmware'in TIME_SET=.../TIME_INVALID yanıtı
+        // kaçırılmıyor (COMMAND_UUID'in kendi notify'ı da yukarıdaki döngüde
+        // zaten abone edildi).
+        void syncDeviceTime();
       } catch (err: any) {
         addLog("error", `Bağlantı hatası: ${err?.message ?? err}`);
         _cleanupConnection();
@@ -587,7 +646,7 @@ export function BleProvider({ children }: { children: React.ReactNode }) {
         throw err;
       }
     },
-    [addLog, updateMeshNode],
+    [addLog, updateMeshNode, syncDeviceTime],
   );
 
   // ── Disconnect ────────────────────────────────────────────────────────────
