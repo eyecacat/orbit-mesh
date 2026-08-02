@@ -131,6 +131,8 @@ const SERVICE_UUID = "12345678-1234-1234-1234-123456789abc";
 // [ZAMAN-PATCH] Firmware'deki COMMAND_UUID ile birebir (ORBIT_MESH_PRO_V2_FIXED.ino satır 69).
 // Komut yazma altyapısı önceden yoktu — sadece notifiable karakteristiklere abone olunuyordu.
 const COMMAND_UUID = "abcdefab-cdef-abcd-efab-cdefabcdefac";
+// [PARSE-PATCH] STATUS_UUID de düz metin gönderir ("READY","BOOT","CALIBRATING")
+const STATUS_UUID = "abcdefab-cdef-abcd-efab-cdefabcdefad";
 const ORBIT_NAME_PREFIX = "ORBIT-MESH";
 const SCAN_TIMEOUT = 15000;
 
@@ -543,6 +545,11 @@ export function BleProvider({ children }: { children: React.ReactNode }) {
                   rawJson.startsWith("TIME_INVALID") ? "warn" : "info",
                   `[CMD←] ${rawJson}`,
                 );
+                return;
+              }
+              // [PARSE-PATCH] STATUS_UUID de JSON değil düz metin durum kelimesi gönderir
+              if (ch.uuid.toLowerCase() === STATUS_UUID.toLowerCase()) {
+                addLog("info", `[STATUS] ${rawJson}`);
                 return;
               }
 
