@@ -50,66 +50,12 @@ interface SatelliteState {
 }
 
 const TURKISH_SATELLITES: TurkishSatellite[] = [
-  {
-    id: "turksat-5a",
-    name: "TÜRKSAT 5A",
-    shortName: "T5A",
-    norad: "47306",
-    purpose: "Haberleşme uydusu",
-    launched: "2021",
-    operator: "Türksat",
-    color: "#FF4560",
-  },
-  {
-    id: "turksat-5b",
-    name: "TÜRKSAT 5B",
-    shortName: "T5B",
-    norad: "50212",
-    purpose: "Haberleşme uydusu",
-    launched: "2022",
-    operator: "Türksat",
-    color: "#FF4560",
-  },
-  {
-    id: "turksat-6a",
-    name: "TÜRKSAT 6A",
-    shortName: "T6A",
-    norad: "60233",
-    purpose: "Milli haberleşme uydusu",
-    launched: "2024",
-    operator: "Türksat / TAI",
-    color: "#FF4560",
-  },
-  {
-    id: "gokturk-1a",
-    name: "GÖKTÜRK-1A",
-    shortName: "G1A",
-    norad: "41875",
-    purpose: "Keşif/gözlem uydusu",
-    launched: "2016",
-    operator: "TAI / MSB",
-    color: "#38C8FF",
-  },
-  {
-    id: "gokturk-2",
-    name: "GÖKTÜRK-2",
-    shortName: "G2",
-    norad: "39030",
-    purpose: "Yer gözlem uydusu",
-    launched: "2012",
-    operator: "TAI / MSB",
-    color: "#00E5B0",
-  },
-  {
-    id: "rasat",
-    name: "RASAT",
-    shortName: "RASAT",
-    norad: "37791",
-    purpose: "Yer gözlem uydusu",
-    launched: "2011",
-    operator: "TÜBİTAK UZAY",
-    color: "#8B5CF6",
-  },
+  { id: "turksat-5a", name: "TÜRKSAT 5A", shortName: "T5A", norad: "47306", purpose: "Haberleşme uydusu", launched: "2021", operator: "Türksat", color: "#FF4560" },
+  { id: "turksat-5b", name: "TÜRKSAT 5B", shortName: "T5B", norad: "50212", purpose: "Haberleşme uydusu", launched: "2022", operator: "Türksat", color: "#FF4560" },
+  { id: "turksat-6a", name: "TÜRKSAT 6A", shortName: "T6A", norad: "60233", purpose: "Milli haberleşme uydusu", launched: "2024", operator: "Türksat / TAI", color: "#FF4560" },
+  { id: "gokturk-1a", name: "GÖKTÜRK-1A", shortName: "G1A", norad: "41875", purpose: "Keşif/gözlem uydusu", launched: "2016", operator: "TAI / MSB", color: "#38C8FF" },
+  { id: "gokturk-2", name: "GÖKTÜRK-2", shortName: "G2", norad: "39030", purpose: "Yer gözlem uydusu", launched: "2012", operator: "TAI / MSB", color: "#00E5B0" },
+  { id: "rasat", name: "RASAT", shortName: "RASAT", norad: "37791", purpose: "Yer gözlem uydusu", launched: "2011", operator: "TÜBİTAK UZAY", color: "#8B5CF6" },
 ];
 
 // Türkiye ortalaması (Konya / Ankara arası). Cihaz konumu yoksa kullanılır.
@@ -135,7 +81,12 @@ function calculatePass(
   for (let m = 0; m <= hours * 60; m += stepMinutes) {
     const time = new Date(from.getTime() + m * 60 * 1000);
     const pv = satellite.propagate(satrec, time);
-    if (!pv || !pv.position) continue;
+    // [TYPE-FIX] satellite.js'in tipi pv.position'ı `EciVec3<number> | boolean`
+    // olarak tanımlıyor. `!pv.position` sadece `false` durumunu eler; `true`
+    // döndüğü (bozuk/derin-uzay edge-case) durumda tip hâlâ `boolean` kalır ve
+    // eciToEcf() çağrısında derleme hatası verir. typeof kontrolüyle hem
+    // runtime hem tip seviyesinde net şekilde dışlanıyor.
+    if (!pv || !pv.position || typeof pv.position === "boolean") continue;
 
     const ecf = satellite.eciToEcf(pv.position, satellite.gstime(time));
     const look = satellite.ecfToLookAngles(observerGeodetic, ecf);
@@ -161,7 +112,8 @@ function calculateCurrentPosition(
   date = new Date()
 ): { lat: number; lon: number; alt: number } | null {
   const pv = satellite.propagate(satrec, date);
-  if (!pv || !pv.position) return null;
+  // [TYPE-FIX] bkz. calculatePass() içindeki aynı desen — yorum orada.
+  if (!pv || !pv.position || typeof pv.position === "boolean") return null;
 
   const gmst = satellite.gstime(date);
   const gd = satellite.eciToGeodetic(pv.position, gmst);
@@ -397,49 +349,17 @@ export default function UydularScreen() {
 
 const styles = StyleSheet.create({
   root: { flex: 1 },
-  header: {
-    flexDirection: "row",
-    alignItems: "center",
-    justifyContent: "space-between",
-    paddingHorizontal: 20,
-    marginBottom: 8,
-  },
+  header: { flexDirection: "row", alignItems: "center", justifyContent: "space-between", paddingHorizontal: 20, marginBottom: 8 },
   backBtn: { padding: 4 },
   title: { fontSize: 20, fontFamily: "Inter_700Bold" },
-  subtitle: {
-    fontSize: 13,
-    fontFamily: "Inter_400Regular",
-    lineHeight: 19,
-    paddingHorizontal: 20,
-    marginBottom: 16,
-  },
+  subtitle: { fontSize: 13, fontFamily: "Inter_400Regular", lineHeight: 19, paddingHorizontal: 20, marginBottom: 16 },
   satList: { paddingHorizontal: 20, gap: 10, paddingBottom: 8 },
-  satChip: {
-    flexDirection: "row",
-    alignItems: "center",
-    gap: 8,
-    paddingHorizontal: 14,
-    paddingVertical: 10,
-    borderRadius: 999,
-    borderWidth: 1,
-  },
+  satChip: { flexDirection: "row", alignItems: "center", gap: 8, paddingHorizontal: 14, paddingVertical: 10, borderRadius: 999, borderWidth: 1 },
   satDot: { width: 8, height: 8, borderRadius: 4 },
   satChipText: { fontSize: 13, fontFamily: "Inter_600SemiBold" },
-  card: {
-    marginHorizontal: 20,
-    borderRadius: 16,
-    borderWidth: 1,
-    padding: 16,
-    marginBottom: 16,
-  },
+  card: { marginHorizontal: 20, borderRadius: 16, borderWidth: 1, padding: 16, marginBottom: 16 },
   cardHeader: { flexDirection: "row", alignItems: "center", gap: 12, marginBottom: 14 },
-  iconWrap: {
-    width: 44,
-    height: 44,
-    borderRadius: 22,
-    alignItems: "center",
-    justifyContent: "center",
-  },
+  iconWrap: { width: 44, height: 44, borderRadius: 22, alignItems: "center", justifyContent: "center" },
   satName: { fontSize: 17, fontFamily: "Inter_700Bold" },
   satMeta: { fontSize: 12, fontFamily: "Inter_400Regular", marginTop: 2 },
   detailRow: { flexDirection: "row", gap: 16 },
@@ -452,16 +372,7 @@ const styles = StyleSheet.create({
   posCell: { flex: 1, alignItems: "center", gap: 4 },
   posValue: { fontSize: 18, fontFamily: "Inter_700Bold" },
   posLabel: { fontSize: 11, fontFamily: "Inter_500Medium" },
-  regionBadge: {
-    flexDirection: "row",
-    alignItems: "center",
-    gap: 8,
-    paddingHorizontal: 12,
-    paddingVertical: 8,
-    borderRadius: 999,
-    borderWidth: 1,
-    alignSelf: "flex-start",
-  },
+  regionBadge: { flexDirection: "row", alignItems: "center", gap: 8, paddingHorizontal: 12, paddingVertical: 8, borderRadius: 999, borderWidth: 1, alignSelf: "flex-start" },
   regionText: { fontSize: 13, fontFamily: "Inter_600SemiBold" },
   passRow: { flexDirection: "row", alignItems: "center", gap: 10, marginBottom: 10 },
   passValue: { fontSize: 14, fontFamily: "Inter_600SemiBold" },
