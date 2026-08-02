@@ -41,7 +41,7 @@ function meanStd(arr: number[]): { mean: number; std: number } {
 }
 
 function magneticMag(t: NodeTelemetry): number {
-  return Math.sqrt(t.mx * t.mx + t.my * t.my + t.mz * t.mz);
+  return Math.sqrt(t.gx * t.gx + t.gy * t.gy + t.gz * t.gz);
 }
 
 function seismicMag(t: NodeTelemetry): number {
