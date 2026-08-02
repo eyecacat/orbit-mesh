@@ -61,7 +61,10 @@ export default function EarthSignScreen() {
         hash,
         vlfHz: latestTelemetry?.vlf_hz,
         vlfAmplitude: latestTelemetry?.vlf_amplitude,
-        mx: latestTelemetry?.mx, my: latestTelemetry?.my, mz: latestTelemetry?.mz,
+        // [ŞEMA-PATCH] Kaynak artık latestTelemetry.gx/gy/gz (jiroskop). Kayıt
+        // şemasındaki (EarthSignRecord, AsyncStorage'da persisted) mx/my/mz alan
+        // adları BİLİNÇLİ OLARAK değiştirilmedi — eski kayıtlarla uyumluluk için.
+        mx: latestTelemetry?.gx, my: latestTelemetry?.gy, mz: latestTelemetry?.gz,
         ax: latestTelemetry?.ax, ay: latestTelemetry?.ay, az: latestTelemetry?.az,
         anomaly: true,
         anomalyScore: anomalyScore ? Math.round(anomalyScore.total) : undefined,
@@ -95,7 +98,7 @@ export default function EarthSignScreen() {
       notes: notes.trim() || undefined,
       vlfHz: latestTelemetry?.vlf_hz,
       vlfAmplitude: latestTelemetry?.vlf_amplitude,
-      mx: latestTelemetry?.mx, my: latestTelemetry?.my, mz: latestTelemetry?.mz,
+      mx: latestTelemetry?.gx, my: latestTelemetry?.gy, mz: latestTelemetry?.gz,
       ax: latestTelemetry?.ax, ay: latestTelemetry?.ay, az: latestTelemetry?.az,
       anomaly: latestTelemetry?.anomaly ?? false,
       anomalyScore: anomalyScore ? Math.round(anomalyScore.total) : undefined,

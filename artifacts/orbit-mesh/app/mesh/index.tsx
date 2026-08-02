@@ -94,9 +94,10 @@ export default function MeshScreen() {
                 <Text style={[styles.latestValue, { color: colors.foreground }]}>{latestTelemetry.temp_c.toFixed(1)}°C</Text>
               </View>
               <View style={styles.latestCell}>
-                <Text style={[styles.latestLabel, { color: colors.mutedForeground }]}>Mag</Text>
+                {/* [ŞEMA-PATCH] Ham jiroskop büyüklüğü — manyetometre yok */}
+                <Text style={[styles.latestLabel, { color: colors.mutedForeground }]}>Jiro °/s</Text>
                 <Text style={[styles.latestValue, { color: colors.secondary }]}>
-                  {Math.sqrt(latestTelemetry.mx**2 + latestTelemetry.my**2 + latestTelemetry.mz**2).toFixed(1)}
+                  {Math.sqrt(latestTelemetry.gx**2 + latestTelemetry.gy**2 + latestTelemetry.gz**2).toFixed(1)}
                 </Text>
               </View>
               <View style={styles.latestCell}>

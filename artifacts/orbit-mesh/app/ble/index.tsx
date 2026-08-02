@@ -206,11 +206,11 @@ export default function BleScreen() {
                     {latestTelemetry.temp_c !== 0 ? `${latestTelemetry.temp_c.toFixed(1)}°C` : "bekleniyor"}
                   </Text>
                 </View>
-                {/* Magnetometer */}
+                {/* [ŞEMA-PATCH] Manyetometre yok — MPU6050 jiroskopu. Etiket ve veri düzeltildi. */}
                 <View style={styles.liveCell}>
-                  <Text style={[styles.liveCellLabel, { color: colors.mutedForeground }]}>Manyetik (X/Y/Z)</Text>
+                  <Text style={[styles.liveCellLabel, { color: colors.mutedForeground }]}>Jiroskop °/s (X/Y/Z)</Text>
                   <Text style={[styles.liveCellValue, { color: colors.secondary }]}>
-                    {latestTelemetry.mx.toFixed(1)} / {latestTelemetry.my.toFixed(1)} / {latestTelemetry.mz.toFixed(1)}
+                    {latestTelemetry.gx.toFixed(1)} / {latestTelemetry.gy.toFixed(1)} / {latestTelemetry.gz.toFixed(1)}
                   </Text>
                 </View>
                 <View style={styles.liveCell}>
@@ -315,7 +315,7 @@ export default function BleScreen() {
         {/* Firmware Reference */}
         <Text style={[styles.sectionTitle, { color: colors.foreground }]}>Beklenen Cihaz / JSON Formatı</Text>
         <View style={[styles.codeBox, { backgroundColor: colors.muted, borderColor: colors.border }]}>
-          <Text style={[styles.code, { color: colors.accent }]}>{`Cihaz Adı: ORBIT-MESH-*\nService: ${SERVICE_UUID}\n\n{\n  "nodeId":"NODE01",\n  "timestamp":123456,\n  "vlf_hz":52.7,\n  "vlf_amplitude":812,\n  "battery":91,\n  "temp_c":28.3,\n  "mx":12.4,\n  "my":-4.2,\n  "mz":8.1,\n  "ax":0.01,\n  "ay":0.02,\n  "az":0.98,\n  "anomaly":false\n}`}</Text>
+          <Text style={[styles.code, { color: colors.accent }]}>{`Cihaz Adı: ORBIT-MESH-*\nService: ${SERVICE_UUID}\n\n{\n  "nodeId":"NODE01",\n  "timestamp":123456,\n  "vlf_hz":52.7,\n  "vlf_amplitude":812,\n  "battery":91,\n  "temp_c":28.3,\n  "gx":12.4,\n  "gy":-4.2,\n  "gz":8.1,\n  "ax":0.01,\n  "ay":0.02,\n  "az":0.98,\n  "anomaly":false\n}`}</Text>
         </View>
       </ScrollView>
 
