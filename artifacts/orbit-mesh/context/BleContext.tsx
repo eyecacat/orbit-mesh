@@ -1,12 +1,6 @@
-/**
- * BleContext — Global BLE singleton + Mesh Engine for ORBIT-MESH.
- *
- * Architecture:
- * - Module-level `_manager` (BleManager) created exactly once.
- * - React context exposes BLE state + mesh engine (baseline, anomaly, consensus).
- * - Connection and subscription survive screen navigation.
- * - Screens only READ; all BLE logic lives here.
- */
+// context/BleContext.tsx
+// ORBIT-MESH PRO V2.1 ULTRA FIRMWARE İLE TAM UYUMLU
+// Tüm IMU alanları kaldırıldı, yeni şema (OrbitMeshTelemetry) kullanılıyor.
 
 import React, {
   createContext,
@@ -18,10 +12,8 @@ import React, {
 } from "react";
 import { AppState, AppStateStatus, Platform } from "react-native";
 
-import { parseTelemetry, isNodeMoving } from "@/utils/telemetryParser";
-import type { NodeTelemetry } from "@/utils/telemetryParser";
-import { computeAnomalyScore } from "@/services/anomalyEngine";
-import type { AnomalyScore } from "@/services/anomalyEngine";
+import { parseTelemetry, OrbitMeshTelemetry } from "@/utils/telemetryParser";
+import { computeAnomalyScore, AnomalyScore } from "@/services/anomalyEngine";
 import {
   recordScore,
   removeNode,
@@ -29,11 +21,11 @@ import {
 } from "@/services/meshConsensus";
 import type { ConsensusResult } from "@/services/meshConsensus";
 
-// ── [A] PQC ENTEGRASYON IMPORTLARI ────────────────────────────────────────
+// ── PQC Entegrasyonu (varsa) ──
 import { pqcManager } from "@/services/pqcEngine";
 import type { PQCPacket } from "@/services/pqcEngine";
 
-// ── BleManager singleton ───────────────────────────────────────────────────
+// ── BleManager singleton ──
 type BleManagerType = import("react-native-ble-plx").BleManager;
 type BleDeviceType = import("react-native-ble-plx").Device;
 type SubType = { remove(): void };
@@ -65,7 +57,7 @@ function isExpoGo(): boolean {
   }
 }
 
-// ── Types ──────────────────────────────────────────────────────────────────
+// ── Types ──
 export interface BleDeviceInfo {
   id: string;
   name: string | null;
@@ -87,7 +79,7 @@ export interface MeshNodeStatus {
   id: string;
   name: string | null;
   lastSeen: number;
-  telemetry: NodeTelemetry | null;
+  telemetry: OrbitMeshTelemetry | null;   // ✅ güncellendi
   anomalyScore: AnomalyScore | null;
   health: string;
   isConnected: boolean;
@@ -100,15 +92,13 @@ export interface BleContextValue {
   scanning: boolean;
   devices: BleDeviceInfo[];
   connectedDevice: BleDeviceInfo | null;
-  telemetry: NodeTelemetry[];
-  latestTelemetry: NodeTelemetry | null;
+  telemetry: OrbitMeshTelemetry[];          // ✅ güncellendi
+  latestTelemetry: OrbitMeshTelemetry | null; // ✅ güncellendi
   logs: LogEntry[];
-  // Mesh engine
   anomalyScore: AnomalyScore | null;
   consensus: ConsensusResult;
   meshNodes: MeshNodeStatus[];
-  nodeMoving: boolean;
-  // ── [B] PQC GÜVENLİK DURUMU TİPİ ─────────────────────────────────────────
+  nodeMoving: boolean;                      // IMU yok, mot_vel bazlı
   pqcStatus: {
     totalNodes: number;
     pqcActiveNodes: string[];
@@ -116,7 +106,6 @@ export interface BleContextValue {
     recentFailures: number;
     failureRate: number;
   };
-  // Actions
   requestPermissions(): Promise<boolean>;
   startScan(): void;
   stopScan(): void;
@@ -128,15 +117,11 @@ export interface BleContextValue {
 const BleContext = createContext<BleContextValue | null>(null);
 
 const SERVICE_UUID = "12345678-1234-1234-1234-123456789abc";
-// [ZAMAN-PATCH] Firmware'deki COMMAND_UUID ile birebir (ORBIT_MESH_PRO_V2_FIXED.ino satır 69).
-// Komut yazma altyapısı önceden yoktu — sadece notifiable karakteristiklere abone olunuyordu.
 const COMMAND_UUID = "abcdefab-cdef-abcd-efab-cdefabcdefac";
-// [PARSE-PATCH] STATUS_UUID de düz metin gönderir ("READY","BOOT","CALIBRATING")
 const STATUS_UUID = "abcdefab-cdef-abcd-efab-cdefabcdefad";
 const ORBIT_NAME_PREFIX = "ORBIT-MESH";
 const SCAN_TIMEOUT = 15000;
 
-// ── Default consensus ─────────────────────────────────────────────────────
 const DEFAULT_CONSENSUS: ConsensusResult = {
   status: "Normal",
   anomalyCount: 0,
@@ -146,7 +131,6 @@ const DEFAULT_CONSENSUS: ConsensusResult = {
   lastUpdated: Date.now(),
 };
 
-// ── Provider ───────────────────────────────────────────────────────────────
 export function BleProvider({ children }: { children: React.ReactNode }) {
   const [isAvailable, setIsAvailable] = useState<boolean | null>(null);
   const [permissionsGranted, setPermissionsGranted] = useState<boolean | null>(
@@ -157,9 +141,8 @@ export function BleProvider({ children }: { children: React.ReactNode }) {
   const [connectedDevice, setConnectedDevice] = useState<BleDeviceInfo | null>(
     null,
   );
-  const [telemetry, setTelemetry] = useState<NodeTelemetry[]>([]);
+  const [telemetry, setTelemetry] = useState<OrbitMeshTelemetry[]>([]); // ✅
   const [logs, setLogs] = useState<LogEntry[]>([]);
-  // Mesh engine state
   const [anomalyScore, setAnomalyScore] = useState<AnomalyScore | null>(null);
   const [consensus, setConsensus] =
     useState<ConsensusResult>(DEFAULT_CONSENSUS);
@@ -192,11 +175,12 @@ export function BleProvider({ children }: { children: React.ReactNode }) {
     );
   }, []);
 
-  // ── Mesh node update helper ─────────────────────────────────────────────
+  // ── Mesh node güncelleme (IMU yok, mot_vel bazlı hareket) ──
   const updateMeshNode = useCallback(
-    (t: NodeTelemetry, connected: boolean) => {
+    (t: OrbitMeshTelemetry, connected: boolean) => {
       const score = computeAnomalyScore(t);
-      const moving = isNodeMoving(t);
+      // Hareket kontrolü: mot_vel > 0.5 km/s ve güven > 50
+      const moving = t.mot_vel > 0.5 && t.mot_conf > 50;
       setNodeMoving(moving);
       setAnomalyScore(score);
 
@@ -229,7 +213,7 @@ export function BleProvider({ children }: { children: React.ReactNode }) {
     [connectedDevice],
   );
 
-  // ── BLE state monitoring ─────────────────────────────────────────────────
+  // ── BLE durumu ──
   useEffect(() => {
     if (Platform.OS === "web") {
       setIsAvailable(false);
@@ -265,7 +249,7 @@ export function BleProvider({ children }: { children: React.ReactNode }) {
     }
   }, [addLog, isExpoGoEnv]);
 
-  // ── App background/foreground ─────────────────────────────────────────────
+  // ── Uygulama ön plana gelince bağlantı kontrolü ──
   useEffect(() => {
     const handler = (next: AppStateStatus) => {
       if (next === "active" && rawDeviceRef.current) {
@@ -285,7 +269,7 @@ export function BleProvider({ children }: { children: React.ReactNode }) {
     return () => sub.remove();
   }, [addLog]);
 
-  // ── Permissions ──────────────────────────────────────────────────────────
+  // ── İzinler ──
   const requestPermissions = useCallback(async (): Promise<boolean> => {
     if (Platform.OS !== "android") {
       setPermissionsGranted(true);
@@ -324,7 +308,7 @@ export function BleProvider({ children }: { children: React.ReactNode }) {
     }
   }, [addLog]);
 
-  // ── Scan ─────────────────────────────────────────────────────────────────
+  // ── Tarama ──
   const stopScan = useCallback(() => {
     const mgr = getManager();
     if (mgr) mgr.stopDeviceScan();
@@ -410,7 +394,7 @@ export function BleProvider({ children }: { children: React.ReactNode }) {
     }, SCAN_TIMEOUT);
   }, [addLog]);
 
-  // ── Notification cleanup ─────────────────────────────────────────────────
+  // ── Bağlantı temizliği ──
   function _cleanupConnection() {
     _notifySubs.forEach((s) => {
       try {
@@ -427,12 +411,7 @@ export function BleProvider({ children }: { children: React.ReactNode }) {
     rawDeviceRef.current = null;
   }
 
-  // ── [ZAMAN-PATCH] Komut yazma altyapısı ──────────────────────────────────
-  // Önceden bu dosyada hiç write çağrısı yoktu; sadece notifiable karakteristiklere
-  // abone olunuyordu. sendCommand() firmware'in COMMAND_UUID karakteristiğine
-  // (WRITE) düz metin komut yazar. react-native-ble-plx write metodları base64
-  // bekler — atob/btoa bu dosyada zaten kullanılıyor (satır 490, 537), aynı
-  // desen korunuyor.
+  // ── Komut gönderme (zaman senkronizasyonu) ──
   const sendCommand = useCallback(
     async (text: string) => {
       const raw = rawDeviceRef.current;
@@ -449,23 +428,18 @@ export function BleProvider({ children }: { children: React.ReactNode }) {
         );
         addLog("info", `[CMD→] ${text}`);
       } catch (err: any) {
-        // Eski firmware COMMAND_UUID'i desteklemiyor olabilir — sessizce düş,
-        // cihaz zaten kendi fallback mantığında (örn. epochValid=false) kalır.
         addLog("warn", `[CMD] Gönderilemedi "${text}": ${err?.message ?? err}`);
       }
     },
     [addLog],
   );
 
-  // Bağlantı kurulup servis/karakteristik keşfi bittiği an cihaz saatini
-  // gerçek unix epoch ile senkronize eder (firmware SET_TIME komutu — bkz.
-  // phaseAutoUpdate() / [ZAMAN-PATCH] ORBIT_MESH_PRO_V2_FIXED.ino).
   const syncDeviceTime = useCallback(async () => {
     const epochSec = Math.floor(Date.now() / 1000);
     await sendCommand(`SET_TIME:${epochSec}`);
   }, [sendCommand]);
 
-  // ── Connect ─────────────────────────────────────────────────────────────
+  // ── Bağlan ──
   const connectToDevice = useCallback(
     async (device: BleDeviceInfo) => {
       const mgr = getManager();
@@ -522,24 +496,19 @@ export function BleProvider({ children }: { children: React.ReactNode }) {
               }
               if (!characteristic?.value) return;
 
-              // Debug log chain
               const b64 = characteristic.value ?? "";
               addLog("scan", `[BASE64] ${b64}`);
 
-              // ── [C] PQC DOĞRULAMA KATMANI BAŞLANGICI ───────────────────────
-              // Ham base64'ü UTF-8'e çevir
+              // Base64 → UTF-8
               let rawJson: string;
               try {
                 rawJson = atob(b64.replace(/\s/g, ""));
               } catch {
-                addLog("error", "[PQC] base64 decode hatası");
+                addLog("error", "base64 decode hatası");
                 return;
               }
 
-              // ── [ZAMAN-PATCH] COMMAND_UUID yanıtları düz metindir ────────
-              // (örn. "TIME_SET=1735762800,PHASE=DAY", "TIME_INVALID") — JSON
-              // telemetri değildir, parseTelemetry'ye verilirse anlamsız
-              // [PARSE] hatası üretir. Burada ayrıca ele alınır.
+              // Komut yanıtları
               if (ch.uuid.toLowerCase() === COMMAND_UUID.toLowerCase()) {
                 addLog(
                   rawJson.startsWith("TIME_INVALID") ? "warn" : "info",
@@ -547,18 +516,16 @@ export function BleProvider({ children }: { children: React.ReactNode }) {
                 );
                 return;
               }
-              // [PARSE-PATCH] STATUS_UUID de JSON değil düz metin durum kelimesi gönderir
               if (ch.uuid.toLowerCase() === STATUS_UUID.toLowerCase()) {
                 addLog("info", `[STATUS] ${rawJson}`);
                 return;
               }
 
-              // PQC paketi mi yoksa legacy JSON mu?
+              // PQC paket kontrolü (opsiyonel)
               let telemetryJson = rawJson;
               let pqcActive = false;
               let pqcValid = true;
 
-              // PQC formatı: {"__pqc":true,"mac":[...],"counter":N,"payload":"...","sessionId":"..."}
               if (rawJson.includes('"__pqc"')) {
                 let pqcPacket: PQCPacket;
                 try {
@@ -567,62 +534,39 @@ export function BleProvider({ children }: { children: React.ReactNode }) {
                   addLog("error", "[PQC] Paket parse hatası — düşürüldü");
                   return;
                 }
-
-                // Node ID'yi geçici olarak paketin payload'undan al
                 let tempNodeId = "ORBIT-UNKNOWN";
                 try {
                   const tempPayload = JSON.parse(pqcPacket.payload);
                   tempNodeId = tempPayload.nodeId ?? tempNodeId;
-                } catch { /* nodeId bilinmiyor, geçici ID kullan */ }
-
+                } catch {}
                 const verifyResult = pqcManager.verifyPacket(tempNodeId, pqcPacket);
                 pqcActive = true;
-
                 if (!verifyResult.valid) {
-                  // ⛔ SAHTE / MANİPÜLE PAKET — işleme alma
                   addLog("error", `[PQC] ⛔ DOĞRULAMA BAŞARISIZ [${tempNodeId}]: ${verifyResult.reason}`);
                   return;
                 }
-
                 pqcValid = true;
                 telemetryJson = verifyResult.decryptedPayload ?? pqcPacket.payload;
                 addLog("info", `[PQC] ✓ Paket doğrulandı [${tempNodeId}] — sayaç: ${pqcPacket.counter}`);
               } else {
-                // Legacy (şifresiz) format
                 addLog("info", "[PQC] Legacy paket — PQC yok, geçiriliyor");
               }
 
-              // ── Standart Telemetri Parse ───────────────────────────────────
-              // parseTelemetry base64 bekliyor — doğrulanmış JSON'u tekrar base64'e sar
-              const verifiedB64 = btoa(telemetryJson);
-              const parsed = parseTelemetry(verifiedB64);
-
+              // ✅ FIRMWARE UYUMLU PARSE
+              const parsed = parseTelemetry(btoa(telemetryJson));
               if (!parsed.data) {
                 addLog("error", `[PARSE] ${parsed.error}`);
                 return;
               }
 
+              const t = parsed.data;
               addLog(
                 "info",
-                `[PARSED${pqcActive ? "+PQC✓" : ""}] ${JSON.stringify(parsed.data)}`,
-              );
-
-              const t = parsed.data;
-
-              // PQC durumunu node'a işaretle (diagnostics için)
-              if (pqcActive && pqcValid) {
-                // Node'u PQC-aktif olarak işaretle (PQCSessionManager zaten biliyor)
-                pqcManager.getOrCreateSession(t.nodeId);
-              }
-
-              addLog(
-                t.anomaly ? "warn" : "info",
-                `Telemetri: nodeId=${t.nodeId} vlf=${t.vlf_hz.toFixed(2)}Hz amp=${t.vlf_amplitude.toFixed(3)} bat=${t.battery}% temp=${t.temp_c}°C${t.anomaly ? " ⚠ ANOMALİ" : ""}${pqcActive ? " 🔐PQC" : ""}`,
+                `[PARSED${pqcActive ? "+PQC✓" : ""}] node=${t.nodeId} vlf=${t.vlf_hz}Hz amp=${t.vlf_amp} bat=${t.bat}% state=${t.state}${t.anomaly ? " ⚠" : ""}`,
               );
 
               setTelemetry((prev) => [t, ...prev].slice(0, 200));
               updateMeshNode(t, true);
-              // ── [C] PQC DOĞRULAMA KATMANI SONU ─────────────────────────────
             });
 
             _notifySubs.push(sub);
@@ -641,10 +585,6 @@ export function BleProvider({ children }: { children: React.ReactNode }) {
           );
         }
 
-        // [ZAMAN-PATCH] Abonelikler kurulduktan SONRA saat senkronizasyonu
-        // gönderiliyor — böylece firmware'in TIME_SET=.../TIME_INVALID yanıtı
-        // kaçırılmıyor (COMMAND_UUID'in kendi notify'ı da yukarıdaki döngüde
-        // zaten abone edildi).
         void syncDeviceTime();
       } catch (err: any) {
         addLog("error", `Bağlantı hatası: ${err?.message ?? err}`);
@@ -656,13 +596,12 @@ export function BleProvider({ children }: { children: React.ReactNode }) {
     [addLog, updateMeshNode, syncDeviceTime],
   );
 
-  // ── Disconnect ────────────────────────────────────────────────────────────
+  // ── Bağlantıyı kes ──
   const disconnect = useCallback(() => {
     const mgr = getManager();
     if (!mgr || !rawDeviceRef.current) return;
     const id = rawDeviceRef.current.id;
 
-    // ── [D] DISCONNECT PQC OTURUM TEMİZLİĞİ ──────────────────────────────────
     if (rawDeviceRef.current?.name) {
       pqcManager.removeNode(rawDeviceRef.current.name);
     }
@@ -707,7 +646,6 @@ export function BleProvider({ children }: { children: React.ReactNode }) {
         consensus,
         meshNodes,
         nodeMoving,
-        // ── [E] CONTEXT VALUE PQC EKLEMESİ ───────────────────────────────────
         pqcStatus: pqcManager.getSecurityStatus(),
         requestPermissions,
         startScan,
