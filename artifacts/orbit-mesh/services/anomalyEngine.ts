@@ -1,123 +1,88 @@
-/**
- * Anomaly Engine
- * Multi-sensor fusion anomaly scoring per node.
- * Weights:
- *   0.40 * vlfScore
- *   0.30 * magneticScore   [ŞEMA-PATCH] İsim tarihseldir; gerçek girdi
- *                          jiroskop (gx/gy/gz, deg/s) normudur — cihazda
- *                          manyetometre yok. Bkz. magMag() JSDoc'u.
- *   0.20 * thermalScore
- *   0.10 * seismicScore
- *
- * Scores computed from z-scores against baseline.
- */
+// services/anomalyEngine.ts
+// ORBIT-MESH PRO V2.1 ULTRA FIRMWARE İLE TAM UYUMLU
+// IMU verisi (gx/gy/gz, ax/ay/az, temp_c) KULLANILMAZ.
+// Anomali skoru sadece VLF, Schumann, hareket ve gürültü üzerinden hesaplanır.
 
-import type { NodeTelemetry } from "@/utils/telemetryParser";
-import { getBaseline, ingestBaseline } from "./baselineEngine";
+import type { OrbitMeshTelemetry } from "@/utils/telemetryParser";
 
 export interface AnomalyScore {
   nodeId: string;
-  total: number;
-  vlfScore: number;
-  magneticScore: number;
-  thermalScore: number;
-  seismicScore: number;
+  total: number;                // 0-100 arası skor
+  vlfScore: number;             // VLF genlik ve frekans bazlı
+  schumannScore: number;        // Schumann sapması ve oran
+  motionScore: number;          // iyonosferik hız ve güven
+  noiseScore: number;           // fault / mains / anomaly flag'leri
   level: "Normal" | "Şüpheli" | "Yüksek" | "Kritik";
-  motionFiltered: boolean;
-}
-
-function zscore(value: number, mean: number, std: number): number {
-  if (std === 0 || mean === 0) return 0;
-  const z = Math.abs(value - mean) / std;
-  // Cap at 3 to avoid single outlier dominating
-  return Math.min(z, 3.0);
-}
-
-function zscoreToScore(z: number): number {
-  // Map z-score to 0-100 scale
-  // z=0 => 0, z=1 => 20, z=2 => 50, z=3 => 100
-  return Math.min(100, Math.max(0, z * z * 11.1));
+  motionFiltered: boolean;      // her zaman false (IMU yok)
 }
 
 /**
- * [ŞEMA-PATCH] Fonksiyon adı "magMag" olarak kalmıştır ama girdi artık
- * jiroskop (açısal hız, deg/s) verisidir — cihazda (MPU6050) manyetometre
- * yok. `magneticScore` alan adı da UI'da doğrudan kullanıldığı için (mesh/ble
- * ekranlarında "Mag" etiketi) bilinçli olarak değiştirilmedi; ancak artık
- * gerçekte titreşim/dönme (rotational motion) anomalisini ölçüyor, gerçek
- * manyetik alan bozulmasını DEĞİL. Jüri sorusuna karşı: bu skor artık
- * "jiroskop-türevi hareket anomalisi" olarak anlaşılmalı.
+ * Skor hesaplama – tüm girdiler firmware'den gelir.
  */
-function magMag(t: NodeTelemetry): number {
-  return Math.sqrt(t.gx * t.gx + t.gy * t.gy + t.gz * t.gz);
-}
+export function computeAnomalyScore(t: OrbitMeshTelemetry): AnomalyScore {
+  // 1. VLF skoru: vlf_amp ve vlf_hz bazında
+  let vlfScore = 0;
+  if (t.vlf_amp > 5000) vlfScore += 40;
+  else if (t.vlf_amp > 2000) vlfScore += 20;
+  else if (t.vlf_amp > 500) vlfScore += 10;
+  // Frekans anormalliği (1 Hz civarı ise düşük kalite)
+  if (t.vlf_hz < 2 || t.vlf_hz > 15) vlfScore += 10;
 
-function motionMag(t: NodeTelemetry): number {
-  return Math.sqrt(t.ax * t.ax + t.ay * t.ay + t.az * t.az);
-}
+  // 2. Schumann skoru
+  let schumannScore = 0;
+  if (t.sch_active) {
+    // 7.83 Hz'den sapma
+    const diff = Math.abs(t.sch_hz - 7.83);
+    if (diff > 0.5) schumannScore += 20;
+    else if (diff > 0.2) schumannScore += 10;
+    // oran düşükse gürültü
+    if (t.sch_ratio < 1.0) schumannScore += 15;
+  } else {
+    // Schumann aktif değilse anomali
+    schumannScore += 25;
+  }
 
-/**
- * Compute anomaly score for a single node.
- * If motion is high, the score is still computed but `motionFiltered` is true
- * (so MeshConsensus can decide to ignore it).
- */
-export function computeAnomalyScore(t: NodeTelemetry): AnomalyScore {
-  const baseline = ingestBaseline(t.nodeId, t);
-  const motion = motionMag(t);
-  const motionFiltered = Math.abs(motion - 1.0) > 1.5;
+  // 3. Hareket skoru (iyonosferik)
+  let motionScore = 0;
+  if (t.mot_vel > 5) motionScore += 30;
+  else if (t.mot_vel > 2) motionScore += 15;
+  else if (t.mot_vel > 0.5) motionScore += 5;
+  // Güven yüksekse ve trend yaklaşıyorsa
+  if (t.mot_conf > 80 && t.mot_trend === "APPROACHING") motionScore += 10;
 
-  const vlfScore = zscoreToScore(
-    zscore(t.vlf_hz, baseline.vlfMean, baseline.vlfStd),
-  );
-  const magneticScore = zscoreToScore(
-    zscore(magMag(t), baseline.magMean, baseline.magStd),
-  );
-  const thermalScore = zscoreToScore(
-    zscore(t.temp_c, baseline.tempMean, baseline.tempStd),
-  );
-  const seismicScore = zscoreToScore(
-    zscore(motion, baseline.seismicMean, baseline.seismicStd),
-  );
+  // 4. Gürültü / hata skoru
+  let noiseScore = 0;
+  if (t.fault) noiseScore += 30;
+  if (t.mains) noiseScore += 20;
+  if (t.anomaly) noiseScore += 25;
 
-  const total =
-    vlfScore * 0.40 +
-    magneticScore * 0.30 +
-    thermalScore * 0.20 +
-    seismicScore * 0.10;
+  // Toplam skor (0-100 arası normalize)
+  let total = vlfScore + schumannScore + motionScore + noiseScore;
+  total = Math.min(100, Math.max(0, total));
 
+  // Seviye belirleme
   let level: AnomalyScore["level"];
-  if (total >= 80) level = "Kritik";
-  else if (total >= 60) level = "Yüksek";
+  if (total >= 70) level = "Kritik";
+  else if (total >= 50) level = "Yüksek";
   else if (total >= 30) level = "Şüpheli";
   else level = "Normal";
 
   return {
     nodeId: t.nodeId,
     total,
-    vlfScore,
-    magneticScore,
-    thermalScore,
-    seismicScore,
+    vlfScore: Math.min(100, vlfScore),
+    schumannScore: Math.min(100, schumannScore),
+    motionScore: Math.min(100, motionScore),
+    noiseScore: Math.min(100, noiseScore),
     level,
-    motionFiltered,
+    motionFiltered: false, // IMU olmadığı için her zaman false
   };
 }
 
 /**
- * Get current anomaly score for a nodeId without ingesting a new point.
+ * Basitleştirilmiş anomali kontrolü (boolean)
  */
-export function getCurrentScore(nodeId: string): AnomalyScore | null {
-  const baseline = getBaseline(nodeId);
-  if (!baseline || baseline.count === 0) return null;
-  // Reconstruct a dummy score based on baseline
-  return {
-    nodeId,
-    total: 0,
-    vlfScore: 0,
-    magneticScore: 0,
-    thermalScore: 0,
-    seismicScore: 0,
-    level: "Normal",
-    motionFiltered: false,
-  };
+export function isAnomalous(t: OrbitMeshTelemetry): boolean {
+  const score = computeAnomalyScore(t);
+  return score.total >= 50;
 }
