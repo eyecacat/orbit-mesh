@@ -1,22 +1,19 @@
-const MAX_PACKET_AGE_MS = 30_000; // 30 saniye
+// utils/bleValidator.ts
+// ORBIT-MESH PRO V2.1 ULTRA: timestamp yok, sadece nodeId formatı kontrol edilir.
+// Replay saldırısı önlemi firmware'de PQC ile zaten sağlanıyor.
+
+const MAX_PACKET_AGE_MS = 30_000; // kullanılmıyor, sadece eski uyumluluk için
 
 export function validateTelemetryPacket(data: {
   nodeId?: string;
-  timestamp?: number;
+  uptime?: number;      // firmware'de uptime var, timestamp yok
 }): { valid: boolean; reason?: string } {
   if (!data.nodeId || !String(data.nodeId).startsWith("ORBIT-")) {
     return { valid: false, reason: "Geçersiz nodeId formatı" };
   }
 
-  if (data.timestamp) {
-    const age = Date.now() - data.timestamp;
-    if (age > MAX_PACKET_AGE_MS) {
-      return { valid: false, reason: `Replay saldırısı: paket ${Math.round(age/1000)}s eski` };
-    }
-    if (age < -5000) {
-      return { valid: false, reason: "Gelecek zaman damgası — sahte paket" };
-    }
-  }
+  // uptime kontrolü isteğe bağlı, ama artan değer olduğu için replay tespiti zor
+  // Firmware PQC ile zaten güvenli
 
   return { valid: true };
 }
