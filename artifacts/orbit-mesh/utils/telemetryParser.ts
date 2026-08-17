@@ -1,180 +1,182 @@
-export interface NodeTelemetry {
-  nodeId: string;
-  timestamp: number;
-  vlf_hz: number;
-  vlf_amplitude: number;
-  battery: number;
-  temp_c: number;
-  // [ŞEMA-PATCH] Önceden "mx/my/mz" (manyetometre çağrışımlı) idi. Cihazda
-  // (MPU6050) manyetometre yok; veri her zaman jiroskoptu (deg/s cinsinden
-  // açısal hız). Firmware ve buradaki isim artık eşleşiyor — bkz.
-  // ORBIT_MESH_PRO_V2_FIXED.ino buildBleTelemetry() [ŞEMA-PATCH].
-  gx: number;
-  gy: number;
-  gz: number;
-  ax: number;
-  ay: number;
-  az: number;
-  anomaly: boolean;
-  receivedAt: number;
+// utils/telemetryParser.ts
+// ORBIT-MESH PRO V2.1 ULTRA FIRMWARE İLE TAM UYUMLU
+// Tüm alan adları firmware'in buildJson() çıktısıyla birebir eşleşir.
 
-  // ── Bilimsel güvenilirlik alanları (opsiyonel) ─────────────────────────
-  // Bu alanlar firmware'in genişletilmiş (tam) JSON'unda bulunur. APK'nın
-  // kısa BLE JSON'unda olmayabilir (MTU/boyut kısıtı), bu yüzden hepsi
-  // opsiyonel ve makul varsayılanlarla doldurulur. Sensör Sağlık Skoru,
-  // Self-Test ve Confidence Index ekranları bunları kullanır.
-  input_fault?: boolean;
-  mains_noise?: boolean;
-  signal_quality?: number; // 0-100, firmware SNR(dB)'den hesaplar
-  noise_floor?: number;
-  activity_index?: number; // 0-100
-  space_state?: string; // QUIET | WATCH | ACTIVE | DISTURBED | BURST | INPUT_FAULT | MAINS_NOISE
-  ai_state?: string;
-  ai_confidence?: number; // 0-1
-  trend?: string; // RISING | FALLING | STABLE
-  battery_pct?: number;
-  education_message?: string;
+export interface OrbitMeshTelemetry {
+  nodeId: string;
+  uptime: number;               // saniye cinsinden çalışma süresi
+  vlf_hz: number;
+  vlf_amp: number;              // firmware'de "vlf_amp"
+  bat: number;                  // firmware'de "bat"
+  anomaly: boolean;
+  fault: boolean;               // firmware'de "fault" (input_fault değil)
+  mains: boolean;               // firmware'de "mains" (mains_noise değil)
+  sq: number;                   // firmware'de "sq" (signal_quality değil)
+  act: number;                  // firmware'de "act" (activity_index değil)
+  state: string;                // firmware'de "state" (space_state değil)
+  // ---- Yeni özellikler (firmware'den gelir) ----
+  sch_active: boolean;
+  sch_hz: number;
+  sch_ratio: number;
+  ads1: number;                 // 16-bit ADS1115 kanal 1 (volt)
+  ads2: number;                 // 16-bit ADS1115 kanal 2 (volt)
+  b6_10: number;                // 6-10 Hz bant enerjisi
+  b17_25: number;               // 17-25 Hz bant enerjisi
+  b45_55: number;               // 45-55 Hz şebeke gürültüsü
+  wave_dir: number;             // yön (derece)
+  wave_src: string;             // kaynak yönü (KUZEYDOGU, vs.)
+  wave_coh: number;             // tutarlılık (0-1)
+  mot_vel: number;              // iyonosferik hız (km/s)
+  mot_head: number;             // hareket yönü (derece)
+  mot_trend: string;            // STATIONARY / APPROACHING / RECEDING
+  mot_conf: number;             // güven seviyesi (%)
+  pqc_seed: string;             // 32 hex karakter PQC seed
+
+  // ---- Mobil tarafından eklenen alanlar (firmware'den gelmez) ----
+  receivedAt: number;           // alınma zamanı (Date.now())
 }
 
+/**
+ * Base64'ü UTF-8 string'e çevirir (BLE karakteristik değeri genelde base64 olur)
+ */
 export function base64ToUtf8(base64: string): string {
   try {
-    const binary = atob(base64.replace(/\s/g, ""));
-    return binary;
+    return atob(base64.replace(/\s/g, ""));
   } catch {
     return "";
   }
 }
 
-function createEmptyTelemetry(): NodeTelemetry {
+/**
+ * Varsayılan (boş) telemetri nesnesi oluşturur
+ */
+function createEmptyTelemetry(): OrbitMeshTelemetry {
   return {
     nodeId: "ORBIT-MESH",
-    timestamp: Date.now(),
+    uptime: 0,
     vlf_hz: 0,
-    vlf_amplitude: 0,
-    battery: 0,
-    temp_c: 0,
-    gx: 0,
-    gy: 0,
-    gz: 0,
-    ax: 0,
-    ay: 0,
-    az: 0,
+    vlf_amp: 0,
+    bat: 0,
     anomaly: false,
+    fault: false,
+    mains: false,
+    sq: 0,
+    act: 0,
+    state: "INIT",
+    sch_active: false,
+    sch_hz: 7.83,
+    sch_ratio: 0,
+    ads1: 0,
+    ads2: 0,
+    b6_10: 0,
+    b17_25: 0,
+    b45_55: 0,
+    wave_dir: 0,
+    wave_src: "UNKNOWN",
+    wave_coh: 0,
+    mot_vel: 0,
+    mot_head: 0,
+    mot_trend: "STATIONARY",
+    mot_conf: 0,
+    pqc_seed: "0".repeat(32),
     receivedAt: Date.now(),
   };
 }
 
-function parseTextTelemetry(raw: string): NodeTelemetry {
-  const t = createEmptyTelemetry();
-
-  t.anomaly =
-    raw.includes("FAULT") || raw.includes("ALERT") || raw.includes("ANOMALY");
-
-  const lvl = raw.match(/LVL=([A-Z_]+)/);
-  if (lvl?.[1] === "FAULT") {
-    t.anomaly = true;
-  }
-
-  const ai = raw.match(/AI=[A-Z_]+\(([0-9.]+)\)/);
-
-  if (ai) {
-    t.vlf_amplitude = Number(ai[1]) * 100;
-  }
-
-  return t;
-}
-
-function parseJsonTelemetry(raw: string): NodeTelemetry {
+/**
+ * Firmware'den gelen JSON'u ayrıştırır ve OrbitMeshTelemetry nesnesine dönüştürür.
+ * Tüm alanlar firmware'in buildJson() çıktısına göre eşlenir.
+ */
+function parseJsonTelemetry(raw: string): OrbitMeshTelemetry {
   const p = JSON.parse(raw);
 
   return {
-    nodeId: String(p.nodeId ?? p.id ?? "ORBIT-MESH"),
-    timestamp: Number(p.timestamp ?? Date.now()),
+    nodeId: String(p.nodeId ?? "ORBIT-MESH"),
+    uptime: Number(p.uptime ?? 0),
     vlf_hz: Number(p.vlf_hz ?? 0),
-    vlf_amplitude: Number(p.vlf_amplitude ?? 0),
-    battery: Number(p.battery ?? 0),
-    temp_c: Number(p.temp_c ?? 0),
-    // [ŞEMA-PATCH] gx/gy/gz birincil; p.mx/my/mz fallback'i SADECE henüz eski
-    // firmware'le çalışan (reflash edilmemiş) sahadaki cihazlarla geriye dönük
-    // uyumluluk için var. Tüm node'lar güncellendiğinde bu fallback kaldırılabilir.
-    gx: Number(p.gx ?? p.mx ?? 0),
-    gy: Number(p.gy ?? p.my ?? 0),
-    gz: Number(p.gz ?? p.mz ?? 0),
-    ax: Number(p.ax ?? 0),
-    ay: Number(p.ay ?? 0),
-    az: Number(p.az ?? 0),
+    vlf_amp: Number(p.vlf_amp ?? 0),
+    bat: Number(p.bat ?? 0),
     anomaly: Boolean(p.anomaly),
+    fault: Boolean(p.fault),
+    mains: Boolean(p.mains),
+    sq: Number(p.sq ?? 0),
+    act: Number(p.act ?? 0),
+    state: String(p.state ?? "INIT"),
+    sch_active: Boolean(p.sch_active),
+    sch_hz: Number(p.sch_hz ?? 7.83),
+    sch_ratio: Number(p.sch_ratio ?? 0),
+    ads1: Number(p.ads1 ?? 0),
+    ads2: Number(p.ads2 ?? 0),
+    b6_10: Number(p.b6_10 ?? 0),
+    b17_25: Number(p.b17_25 ?? 0),
+    b45_55: Number(p.b45_55 ?? 0),
+    wave_dir: Number(p.wave_dir ?? 0),
+    wave_src: String(p.wave_src ?? "UNKNOWN"),
+    wave_coh: Number(p.wave_coh ?? 0),
+    mot_vel: Number(p.mot_vel ?? 0),
+    mot_head: Number(p.mot_head ?? 0),
+    mot_trend: String(p.mot_trend ?? "STATIONARY"),
+    mot_conf: Number(p.mot_conf ?? 0),
+    pqc_seed: String(p.pqc_seed ?? "0".repeat(32)),
     receivedAt: Date.now(),
-
-    // Sağlık/güvenilirlik alanları — firmware gönderiyorsa yakala,
-    // göndermiyorsa undefined kalır (UI bunu "veri yok" olarak yorumlar).
-    input_fault: p.input_fault !== undefined ? Boolean(p.input_fault) : undefined,
-    mains_noise: p.mains_noise !== undefined ? Boolean(p.mains_noise) : undefined,
-    signal_quality: p.signal_quality !== undefined ? Number(p.signal_quality) : undefined,
-    noise_floor: p.noise_floor !== undefined ? Number(p.noise_floor) : undefined,
-    activity_index: p.activity_index !== undefined ? Number(p.activity_index) : undefined,
-    space_state: typeof p.space_state === "string" ? p.space_state : undefined,
-    ai_state: typeof p.ai_state === "string" ? p.ai_state : undefined,
-    ai_confidence: p.ai_confidence !== undefined ? Number(p.ai_confidence) : undefined,
-    trend: typeof p.trend === "string" ? p.trend : undefined,
-    battery_pct: p.battery_pct !== undefined ? Number(p.battery_pct) : undefined,
-    education_message: typeof p.education_message === "string" ? p.education_message : undefined,
   };
 }
 
-export function parseTelemetry(base64Value: string) {
-  // Güvenlik: 10KB'dan büyük BLE paketleri reddet (normal paket < 1KB)
+/**
+ * Ana parse fonksiyonu – BLE'dan gelen base64 string'i işler.
+ * @param base64Value - BLE characteristic'ten okunan base64 kodlu payload
+ * @returns { data: OrbitMeshTelemetry | null, raw: string, error?: string }
+ */
+export function parseTelemetry(base64Value: string): {
+  data: OrbitMeshTelemetry | null;
+  raw: string;
+  error?: string;
+} {
+  // Güvenlik: 10KB'dan büyük paketleri reddet
   if (base64Value.length > 13000) {
-    return { data: null, raw: "", error: "Paket boyutu aşıldı (max 10KB)" };
+    return { data: null, raw: "", error: "Paket boyutu çok büyük (>10KB)" };
   }
+
   try {
     const raw = base64ToUtf8(base64Value).trim();
-
     if (!raw) {
-      return {
-        data: null,
-        raw,
-        error: "Boş payload",
-      };
+      return { data: null, raw, error: "Boş payload" };
     }
 
+    // JSON formatında mı?
     if (raw.startsWith("{")) {
-      return {
-        data: parseJsonTelemetry(raw),
-        raw,
-      };
+      const data = parseJsonTelemetry(raw);
+      return { data, raw };
     }
 
-    return {
-      data: parseTextTelemetry(raw),
-      raw,
-    };
+    // Düz metin formatı (eski veya hata durumu)
+    // Bu durumda basitçe boş telemetri döndürüp ham metni ekleyelim
+    const fallback = createEmptyTelemetry();
+    fallback.state = "TEXT_MODE";
+    fallback.receivedAt = Date.now();
+    return { data: fallback, raw };
   } catch (err: any) {
     return {
       data: null,
       raw: "",
-      error: err?.message ?? "Parse error",
+      error: err?.message ?? "Bilinmeyen parse hatası",
     };
   }
 }
 
 /**
- * [ŞEMA-PATCH] İsim tarihsel nedenlerle "magneticMagnitude" kalmıştır (UI
- * ekranlarında bu isimle çağrılıyor olabilir — dosyaları görmediğimiz için
- * güvenli tarafta kalınıp isim değiştirilmedi). Ancak hesaplanan büyüklük
- * artık gerçek fiziğiyle örtüşüyor: jiroskop (açısal hız) normu, ‖ω‖ =
- * √(gx²+gy²+gz²), deg/s cinsinden. Manyetometre bu cihazda yok.
+ * Telemetri verisinin "anomalili" olup olmadığını kontrol eder (yardımcı)
  */
-export function magneticMagnitude(t: NodeTelemetry) {
-  return Math.sqrt(t.gx * t.gx + t.gy * t.gy + t.gz * t.gz);
+export function hasAnomaly(t: OrbitMeshTelemetry): boolean {
+  return t.anomaly || t.fault || t.mains;
 }
 
-export function motionMagnitude(t: NodeTelemetry) {
-  return Math.sqrt(t.ax * t.ax + t.ay * t.ay + t.az * t.az);
+/**
+ * Sinyal kalitesini metin olarak döndürür
+ */
+export function signalQualityLabel(sq: number): string {
+  if (sq >= 60) return "İyi";
+  if (sq >= 40) return "Orta";
+  if (sq >= 20) return "Zayıf";
+  return "Kötü";
 }
-
-export function isNodeMoving(t: NodeTelemetry, threshold = 0.3) {
-  const mag = motionMagnitude(t);
-  return Math.abs(mag - 1) > threshold;
-}
-
