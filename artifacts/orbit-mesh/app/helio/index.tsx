@@ -1,3 +1,7 @@
+// app/helio/index.tsx
+// ORBIT-MESH PRO V2.1 ULTRA FIRMWARE İLE TAM UYUMLU
+// Hata düzeltmeleri: vlf_amp, bat, anomali skoru alanları güncellendi.
+
 import { BACKEND_URL } from "@/lib/env";
 import { Feather } from "@expo/vector-icons";
 import { router } from "expo-router";
@@ -7,6 +11,7 @@ import { useSafeAreaInsets } from "react-native-safe-area-context";
 
 import { useBle } from "@/context/BleContext";
 import { useColors } from "@/hooks/useColors";
+import { OrbitMeshTelemetry } from "@/utils/telemetryParser";
 
 interface SolarFlare {
   flrID: string;
@@ -59,10 +64,11 @@ export default function HelioScreen() {
   };
 
   const isConnected = !!connectedDevice;
-  const hasData = !!latestTelemetry;
-  const vlfAnomaly = latestTelemetry?.anomaly ?? false;
-  const vlfHz = latestTelemetry?.vlf_hz ?? 0;
-  const vlfAmplitude = latestTelemetry?.vlf_amplitude ?? 0;
+  const tele = latestTelemetry as OrbitMeshTelemetry | null;
+  const hasData = !!tele;
+  const vlfAnomaly = tele?.anomaly ?? false;
+  const vlfHz = tele?.vlf_hz ?? 0;
+  const vlfAmp = tele?.vlf_amp ?? 0;
   const schumannDelta = vlfHz > 0 ? Math.abs(vlfHz - 7.83).toFixed(2) : null;
 
   return (
@@ -98,27 +104,27 @@ export default function HelioScreen() {
               </View>
               <View style={styles.vlfGrid}>
                 <View style={styles.vlfCell}>
-                  <Text style={[styles.vlfCellLabel, { color: colors.mutedForeground }]}>VLF Frequency</Text>
+                  <Text style={[styles.vlfCellLabel, { color: colors.mutedForeground }]}>VLF Frekans</Text>
                   <Text style={[styles.vlfCellValue, { color: colors.primary }]}>{vlfHz > 0 ? `${vlfHz.toFixed(2)} Hz` : "—"}</Text>
                 </View>
                 <View style={styles.vlfCell}>
-                  <Text style={[styles.vlfCellLabel, { color: colors.mutedForeground }]}>VLF Amplitude</Text>
-                  <Text style={[styles.vlfCellValue, { color: colors.primary }]}>{vlfAmplitude > 0 ? vlfAmplitude.toFixed(3) : "—"}</Text>
+                  <Text style={[styles.vlfCellLabel, { color: colors.mutedForeground }]}>VLF Genlik</Text>
+                  <Text style={[styles.vlfCellValue, { color: colors.primary }]}>{vlfAmp > 0 ? vlfAmp.toFixed(1) : "—"}</Text>
                 </View>
                 <View style={styles.vlfCell}>
                   <Text style={[styles.vlfCellLabel, { color: colors.mutedForeground }]}>Schumann Delta</Text>
                   <Text style={[styles.vlfCellValue, { color: schumannDelta !== null ? colors.accent : colors.mutedForeground }]}>{schumannDelta !== null ? `Δ ${schumannDelta} Hz` : "—"}</Text>
                 </View>
                 <View style={styles.vlfCell}>
-                  <Text style={[styles.vlfCellLabel, { color: colors.mutedForeground }]}>Anomaly Score</Text>
-                  <Text style={[styles.vlfCellValue, { color: anomalyScore ? (anomalyScore.total >= 60 ? colors.danger : anomalyScore.total >= 30 ? colors.warning : colors.accent) : colors.mutedForeground }]}>
+                  <Text style={[styles.vlfCellLabel, { color: colors.mutedForeground }]}>Anomali Skoru</Text>
+                  <Text style={[styles.vlfCellValue, { color: anomalyScore ? (anomalyScore.total >= 70 ? colors.danger : anomalyScore.total >= 50 ? colors.warning : colors.accent) : colors.mutedForeground }]}>
                     {anomalyScore ? Math.round(anomalyScore.total) : "—"}
                   </Text>
                 </View>
                 <View style={styles.vlfCell}>
-                  <Text style={[styles.vlfCellLabel, { color: colors.mutedForeground }]}>Node Health</Text>
-                  <Text style={[styles.vlfCellValue, { color: (latestTelemetry?.battery ?? 0) > 20 ? colors.accent : colors.danger }]}>
-                    {(latestTelemetry?.battery ?? 0) > 0 ? `%${latestTelemetry!.battery} Bat` : "—"}
+                  <Text style={[styles.vlfCellLabel, { color: colors.mutedForeground }]}>Batarya</Text>
+                  <Text style={[styles.vlfCellValue, { color: (tele?.bat ?? 0) > 20 ? colors.accent : colors.danger }]}>
+                    {tele?.bat > 0 ? `%${tele.bat}` : "—"}
                   </Text>
                 </View>
                 <View style={styles.vlfCell}>
@@ -129,7 +135,7 @@ export default function HelioScreen() {
                 </View>
               </View>
               <Text style={[styles.vlfMeta, { color: colors.mutedForeground }]}>
-                Node: {latestTelemetry.nodeId} · {new Date(latestTelemetry.receivedAt).toLocaleTimeString("tr-TR")}
+                Node: {tele?.nodeId ?? "—"} · {new Date(tele?.receivedAt ?? Date.now()).toLocaleTimeString("tr-TR")}
               </Text>
             </>
           ) : isConnected ? (
