@@ -1,3 +1,7 @@
+// app/auet/index.tsx
+// ORBIT-MESH PRO V2.1 ULTRA FIRMWARE İLE TAM UYUMLU
+// Hata düzeltmeleri: vlf_amp, bat, anomali skoru alanları güncellendi.
+
 import { Feather } from "@expo/vector-icons";
 import { LinearGradient } from "expo-linear-gradient";
 import { router } from "expo-router";
@@ -8,6 +12,7 @@ import { useSafeAreaInsets } from "react-native-safe-area-context";
 
 import { useBle } from "@/context/BleContext";
 import { useColors } from "@/hooks/useColors";
+import { OrbitMeshTelemetry } from "@/utils/telemetryParser";
 
 interface AuetEvent {
   id: string;
@@ -18,7 +23,7 @@ interface AuetEvent {
   source: "ble" | "manual";
   nodeId?: string;
   vlf_hz?: number;
-  vlf_amplitude?: number;
+  vlf_amp?: number;
   anomalyScore?: number;
 }
 
@@ -54,7 +59,7 @@ export default function AuetScreen() {
         source: "ble",
         nodeId: latestTelemetry?.nodeId,
         vlf_hz: latestTelemetry?.vlf_hz,
-        vlf_amplitude: latestTelemetry?.vlf_amplitude,
+        vlf_amp: latestTelemetry?.vlf_amp,
         anomalyScore: anomalyScore ? Math.round(anomalyScore.total) : undefined,
       };
       const updated = [autoEvent, ...prev];
@@ -72,7 +77,7 @@ export default function AuetScreen() {
       source: "manual",
       nodeId: connectedDevice?.id,
       vlf_hz: latestTelemetry?.vlf_hz,
-      vlf_amplitude: latestTelemetry?.vlf_amplitude,
+      vlf_amp: latestTelemetry?.vlf_amp,
       anomalyScore: anomalyScore ? Math.round(anomalyScore.total) : undefined,
     };
     const updated = [event, ...events];
@@ -89,7 +94,8 @@ export default function AuetScreen() {
   };
 
   const isConnected = !!connectedDevice;
-  const hasData = !!latestTelemetry;
+  const tele = latestTelemetry as OrbitMeshTelemetry | null;
+  const hasData = !!tele;
 
   return (
     <View style={[styles.root, { backgroundColor: colors.background }]}>
@@ -137,22 +143,22 @@ export default function AuetScreen() {
           </View>
         )}
 
-        {/* Anomaly Score Panel */}
+        {/* Anomaly Score Panel - Güncellendi */}
         {anomalyScore && (
           <View style={[styles.scoreCard, { backgroundColor: colors.card, borderColor: colors.border }]}>
             <Text style={[styles.scoreTitle, { color: colors.foreground }]}>Anomali Skoru</Text>
             <View style={styles.scoreRow}>
-              <View style={[styles.scoreCircle, { borderColor: anomalyScore.total >= 60 ? colors.danger : anomalyScore.total >= 30 ? colors.warning : colors.accent }]}>
-                <Text style={[styles.scoreValue, { color: anomalyScore.total >= 60 ? colors.danger : anomalyScore.total >= 30 ? colors.warning : colors.accent }]}>
+              <View style={[styles.scoreCircle, { borderColor: anomalyScore.total >= 70 ? colors.danger : anomalyScore.total >= 50 ? colors.warning : colors.accent }]}>
+                <Text style={[styles.scoreValue, { color: anomalyScore.total >= 70 ? colors.danger : anomalyScore.total >= 50 ? colors.warning : colors.accent }]}>
                   {Math.round(anomalyScore.total)}
                 </Text>
               </View>
               <View style={{ flex: 1, gap: 4 }}>
-                <Text style={[styles.scoreLevel, { color: anomalyScore.total >= 60 ? colors.danger : anomalyScore.total >= 30 ? colors.warning : colors.accent }]}>
+                <Text style={[styles.scoreLevel, { color: anomalyScore.total >= 70 ? colors.danger : anomalyScore.total >= 50 ? colors.warning : colors.accent }]}>
                   {anomalyScore.level}
                 </Text>
                 <Text style={[styles.scoreBreakdown, { color: colors.mutedForeground }]}>
-                  VLF {anomalyScore.vlfScore.toFixed(0)} | Mag {anomalyScore.magneticScore.toFixed(0)} | Temp {anomalyScore.thermalScore.toFixed(0)} | Seis {anomalyScore.seismicScore.toFixed(0)}
+                  VLF {anomalyScore.vlfScore.toFixed(0)} | Schumann {anomalyScore.schumannScore.toFixed(0)} | Hareket {anomalyScore.motionScore.toFixed(0)} | Gürültü {anomalyScore.noiseScore.toFixed(0)}
                 </Text>
               </View>
             </View>
@@ -162,39 +168,39 @@ export default function AuetScreen() {
           </View>
         )}
 
-        {/* Live Telemetry */}
+        {/* Live Telemetry - Güncellendi */}
         {isConnected && hasData && (
           <View style={[styles.telemetryPanel, { backgroundColor: colors.card, borderColor: colors.border }]}>
             <Text style={[styles.telemetryTitle, { color: colors.foreground }]}>Anlık BLE Sensör Verisi</Text>
             <View style={styles.telemetryGrid}>
               <View style={styles.telemetryCell}>
                 <Text style={[styles.telemetryLabel, { color: colors.mutedForeground }]}>VLF Frekans</Text>
-                <Text style={[styles.telemetryValue, { color: colors.primary }]}>{latestTelemetry.vlf_hz > 0 ? `${latestTelemetry.vlf_hz.toFixed(2)} Hz` : "—"}</Text>
+                <Text style={[styles.telemetryValue, { color: colors.primary }]}>{tele.vlf_hz > 0 ? `${tele.vlf_hz.toFixed(2)} Hz` : "—"}</Text>
               </View>
               <View style={styles.telemetryCell}>
-                <Text style={[styles.telemetryLabel, { color: colors.mutedForeground }]}>Amplitüd</Text>
-                <Text style={[styles.telemetryValue, { color: colors.primary }]}>{latestTelemetry.vlf_amplitude > 0 ? latestTelemetry.vlf_amplitude.toFixed(3) : "—"}</Text>
+                <Text style={[styles.telemetryLabel, { color: colors.mutedForeground }]}>VLF Genlik</Text>
+                <Text style={[styles.telemetryValue, { color: colors.primary }]}>{tele.vlf_amp > 0 ? tele.vlf_amp.toFixed(1) : "—"}</Text>
               </View>
               <View style={styles.telemetryCell}>
                 <Text style={[styles.telemetryLabel, { color: colors.mutedForeground }]}>Batarya</Text>
-                <Text style={[styles.telemetryValue, { color: latestTelemetry.battery > 20 ? colors.accent : colors.danger }]}>{latestTelemetry.battery > 0 ? `%${latestTelemetry.battery}` : "—"}</Text>
+                <Text style={[styles.telemetryValue, { color: tele.bat > 20 ? colors.accent : colors.danger }]}>{tele.bat > 0 ? `%${tele.bat}` : "—"}</Text>
               </View>
               <View style={styles.telemetryCell}>
-                <Text style={[styles.telemetryLabel, { color: colors.mutedForeground }]}>Sıcaklık</Text>
-                <Text style={[styles.telemetryValue, { color: colors.foreground }]}>{latestTelemetry.temp_c !== 0 ? `${latestTelemetry.temp_c.toFixed(1)}°C` : "—"}</Text>
+                <Text style={[styles.telemetryLabel, { color: colors.mutedForeground }]}>Durum</Text>
+                <Text style={[styles.telemetryValue, { color: colors.foreground }]}>{tele.state}</Text>
               </View>
               <View style={styles.telemetryCell}>
-                <Text style={[styles.telemetryLabel, { color: colors.mutedForeground }]}>Signal Quality</Text>
-                <Text style={[styles.telemetryValue, { color: colors.secondary }]}>{latestTelemetry.vlf_amplitude > 500 ? "Güçlü" : latestTelemetry.vlf_amplitude > 100 ? "Orta" : "Zayıf"}</Text>
+                <Text style={[styles.telemetryLabel, { color: colors.mutedForeground }]}>Sinyal Kalitesi</Text>
+                <Text style={[styles.telemetryValue, { color: colors.secondary }]}>{tele.sq > 40 ? "İyi" : tele.sq > 20 ? "Orta" : "Zayıf"}</Text>
               </View>
               <View style={styles.telemetryCell}>
-                <Text style={[styles.telemetryLabel, { color: colors.mutedForeground }]}>Current Score</Text>
+                <Text style={[styles.telemetryLabel, { color: colors.mutedForeground }]}>Skor</Text>
                 <Text style={[styles.telemetryValue, { color: anomalyScore ? (anomalyScore.total >= 60 ? colors.danger : anomalyScore.total >= 30 ? colors.warning : colors.accent) : colors.mutedForeground }]}>
                   {anomalyScore ? Math.round(anomalyScore.total) : "—"}
                 </Text>
               </View>
             </View>
-            {latestTelemetry.anomaly && (
+            {tele.anomaly && (
               <View style={[styles.anomalyRow, { backgroundColor: colors.danger + "22" }]}>
                 <Feather name="alert-triangle" size={14} color={colors.danger} />
                 <Text style={[styles.anomalyText, { color: colors.danger }]}>ANOMALİ ALGILANDI — otomatik log oluşturuldu</Text>
@@ -250,7 +256,7 @@ export default function AuetScreen() {
                 </View>
               </View>
               <Text style={[styles.eventTime, { color: colors.mutedForeground }]}>{new Date(e.timestamp).toLocaleString("tr-TR")}</Text>
-              {e.vlf_hz !== undefined && <Text style={[styles.eventMeta, { color: colors.primary }]}>VLF: {e.vlf_hz.toFixed(2)} Hz · Amp: {(e.vlf_amplitude ?? 0).toFixed(3)}</Text>}
+              {e.vlf_hz !== undefined && <Text style={[styles.eventMeta, { color: colors.primary }]}>VLF: {e.vlf_hz.toFixed(2)} Hz · Amp: {(e.vlf_amp ?? 0).toFixed(1)}</Text>}
               {e.anomalyScore !== undefined && <Text style={[styles.eventMeta, { color: colors.warning }]}>Anomaly Score: {e.anomalyScore}</Text>}
               {e.notes && <Text style={[styles.eventNotes, { color: colors.mutedForeground }]}>{e.notes}</Text>}
             </View>
