@@ -1,6 +1,5 @@
 // app/helio/index.tsx
-// ORBIT-MESH PRO V2.1 ULTRA FIRMWARE İLE TAM UYUMLU
-// Hata düzeltmeleri: vlf_amp, bat, anomali skoru alanları güncellendi.
+// ŞARTNAME UYUMLU: Güneş-VLF İlişkisi kartı eklendi.
 
 import { BACKEND_URL } from "@/lib/env";
 import { Feather } from "@expo/vector-icons";
@@ -8,27 +7,12 @@ import { router } from "expo-router";
 import React, { useEffect, useState } from "react";
 import { ActivityIndicator, Platform, ScrollView, StyleSheet, Text, Pressable, View } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
-
 import { useBle } from "@/context/BleContext";
 import { useColors } from "@/hooks/useColors";
 import { OrbitMeshTelemetry } from "@/utils/telemetryParser";
 
-interface SolarFlare {
-  flrID: string;
-  beginTime: string;
-  peakTime?: string;
-  endTime?: string;
-  classType: string;
-  sourceLocation?: string;
-  activeRegionNum?: number;
-  note?: string;
-}
-
-interface GST {
-  gstID: string;
-  startTime: string;
-  allKpIndex?: Array<{ observedTime: string; kpIndex: number }>;
-}
+interface SolarFlare { flrID: string; beginTime: string; peakTime?: string; endTime?: string; classType: string; sourceLocation?: string; activeRegionNum?: number; note?: string; }
+interface GST { gstID: string; startTime: string; allKpIndex?: Array<{ observedTime: string; kpIndex: number }>; }
 
 export default function HelioScreen() {
   const colors = useColors();
@@ -47,14 +31,10 @@ export default function HelioScreen() {
     try {
       const start = new Date(Date.now() - 30 * 24 * 60 * 60 * 1000).toISOString().split("T")[0];
       const end = new Date().toISOString().split("T")[0];
-      const [f, g] = await Promise.all([
-        fetch(`${BACKEND_URL}/api/nasa?type=FLR&start=${start}&end=${end}`),
-        fetch(`${BACKEND_URL}/api/nasa?type=GST&start=${start}&end=${end}`),
-      ]);
+      const [f, g] = await Promise.all([fetch(`${BACKEND_URL}/api/nasa?type=FLR&start=${start}&end=${end}`), fetch(`${BACKEND_URL}/api/nasa?type=GST&start=${start}&end=${end}`)]);
       if (f.ok) setFlares(await f.json());
       if (g.ok) setGsts(await g.json());
-    } catch { setError(true); }
-    finally { setLoading(false); }
+    } catch { setError(true); } finally { setLoading(false); }
   }
 
   const flareClass = (c: string) => {
@@ -74,143 +54,73 @@ export default function HelioScreen() {
   return (
     <View style={[styles.root, { backgroundColor: colors.background }]}>
       <View style={[styles.header, { paddingTop: topPad + 8, borderBottomColor: colors.border }]}>
-        <Pressable onPress={() => router.back()} style={({ pressed }) => ({ opacity: pressed ? 0.6 : 1 })}>
-          <Feather name="arrow-left" size={24} color={colors.foreground} />
-        </Pressable>
+        <Pressable onPress={() => router.back()} style={({ pressed }) => ({ opacity: pressed ? 0.6 : 1 })}><Feather name="arrow-left" size={24} color={colors.foreground} /></Pressable>
         <Text style={[styles.headerTitle, { color: colors.foreground }]}>HELIO Gözlemevi</Text>
-        <Pressable onPress={fetchData} style={({ pressed }) => ({ opacity: pressed ? 0.6 : 1 })}>
-          <Feather name="refresh-cw" size={20} color={colors.primary} />
-        </Pressable>
+        <Pressable onPress={fetchData} style={({ pressed }) => ({ opacity: pressed ? 0.6 : 1 })}><Feather name="refresh-cw" size={20} color={colors.primary} /></Pressable>
       </View>
 
       <ScrollView contentContainerStyle={{ padding: 20, paddingBottom: 100 }} showsVerticalScrollIndicator={false}>
-        {/* VLF Live Card */}
         <View style={[styles.vlfCard, { backgroundColor: colors.card, borderColor: colors.border }]}>
-          <View style={styles.vlfHeader}>
-            <Feather name="radio" size={18} color={colors.primary} />
-            <Text style={[styles.vlfTitle, { color: colors.foreground }]}>VLF Sinyal Durumu</Text>
-          </View>
-
+          <View style={styles.vlfHeader}><Feather name="radio" size={18} color={colors.primary} /><Text style={[styles.vlfTitle, { color: colors.foreground }]}>VLF Sinyal Durumu</Text></View>
           {isConnected && hasData ? (
             <>
-              <View style={[styles.vlfStatus, {
-                backgroundColor: vlfAnomaly ? colors.danger + "22" : colors.accent + "22",
-                borderColor: vlfAnomaly ? colors.danger + "44" : colors.accent + "44",
-              }]}>
+              <View style={[styles.vlfStatus, { backgroundColor: vlfAnomaly ? colors.danger + "22" : colors.accent + "22", borderColor: vlfAnomaly ? colors.danger + "44" : colors.accent + "44" }]}>
                 <Feather name={vlfAnomaly ? "alert-triangle" : "check-circle"} size={14} color={vlfAnomaly ? colors.danger : colors.accent} />
-                <Text style={[styles.vlfStatusText, { color: vlfAnomaly ? colors.danger : colors.accent }]}>
-                  {vlfAnomaly ? `ANOMALİ: ${connectedDevice.name ?? connectedDevice.id}` : `Aktif: ${connectedDevice.name ?? connectedDevice.id}`}
-                </Text>
+                <Text style={[styles.vlfStatusText, { color: vlfAnomaly ? colors.danger : colors.accent }]}>{vlfAnomaly ? `ANOMALİ: ${connectedDevice.name ?? connectedDevice.id}` : `Aktif: ${connectedDevice.name ?? connectedDevice.id}`}</Text>
               </View>
               <View style={styles.vlfGrid}>
-                <View style={styles.vlfCell}>
-                  <Text style={[styles.vlfCellLabel, { color: colors.mutedForeground }]}>VLF Frekans</Text>
-                  <Text style={[styles.vlfCellValue, { color: colors.primary }]}>{vlfHz > 0 ? `${vlfHz.toFixed(2)} Hz` : "—"}</Text>
-                </View>
-                <View style={styles.vlfCell}>
-                  <Text style={[styles.vlfCellLabel, { color: colors.mutedForeground }]}>VLF Genlik</Text>
-                  <Text style={[styles.vlfCellValue, { color: colors.primary }]}>{vlfAmp > 0 ? vlfAmp.toFixed(1) : "—"}</Text>
-                </View>
-                <View style={styles.vlfCell}>
-                  <Text style={[styles.vlfCellLabel, { color: colors.mutedForeground }]}>Schumann Delta</Text>
-                  <Text style={[styles.vlfCellValue, { color: schumannDelta !== null ? colors.accent : colors.mutedForeground }]}>{schumannDelta !== null ? `Δ ${schumannDelta} Hz` : "—"}</Text>
-                </View>
-                <View style={styles.vlfCell}>
-                  <Text style={[styles.vlfCellLabel, { color: colors.mutedForeground }]}>Anomali Skoru</Text>
-                  <Text style={[styles.vlfCellValue, { color: anomalyScore ? (anomalyScore.total >= 70 ? colors.danger : anomalyScore.total >= 50 ? colors.warning : colors.accent) : colors.mutedForeground }]}>
-                    {anomalyScore ? Math.round(anomalyScore.total) : "—"}
-                  </Text>
-                </View>
-                <View style={styles.vlfCell}>
-                  <Text style={[styles.vlfCellLabel, { color: colors.mutedForeground }]}>Batarya</Text>
-                  <Text style={[styles.vlfCellValue, { color: (tele?.bat ?? 0) > 20 ? colors.accent : colors.danger }]}>
-                    {tele?.bat > 0 ? `%${tele.bat}` : "—"}
-                  </Text>
-                </View>
-                <View style={styles.vlfCell}>
-                  <Text style={[styles.vlfCellLabel, { color: colors.mutedForeground }]}>Mesh Consensus</Text>
-                  <Text style={[styles.vlfCellValue, { color: consensus.status !== "Normal" ? colors.danger : colors.accent }]}>
-                    {consensus.status}
-                  </Text>
-                </View>
+                <View style={styles.vlfCell}><Text style={[styles.vlfCellLabel, { color: colors.mutedForeground }]}>VLF Frekans</Text><Text style={[styles.vlfCellValue, { color: colors.primary }]}>{vlfHz > 0 ? `${vlfHz.toFixed(2)} Hz` : "—"}</Text></View>
+                <View style={styles.vlfCell}><Text style={[styles.vlfCellLabel, { color: colors.mutedForeground }]}>VLF Genlik</Text><Text style={[styles.vlfCellValue, { color: colors.primary }]}>{vlfAmp > 0 ? vlfAmp.toFixed(1) : "—"}</Text></View>
+                <View style={styles.vlfCell}><Text style={[styles.vlfCellLabel, { color: colors.mutedForeground }]}>Schumann Delta</Text><Text style={[styles.vlfCellValue, { color: schumannDelta !== null ? colors.accent : colors.mutedForeground }]}>{schumannDelta !== null ? `Δ ${schumannDelta} Hz` : "—"}</Text></View>
+                <View style={styles.vlfCell}><Text style={[styles.vlfCellLabel, { color: colors.mutedForeground }]}>Anomali Skoru</Text><Text style={[styles.vlfCellValue, { color: anomalyScore ? (anomalyScore.total >= 70 ? colors.danger : anomalyScore.total >= 50 ? colors.warning : colors.accent) : colors.mutedForeground }]}>{anomalyScore ? Math.round(anomalyScore.total) : "—"}</Text></View>
+                <View style={styles.vlfCell}><Text style={[styles.vlfCellLabel, { color: colors.mutedForeground }]}>Batarya</Text><Text style={[styles.vlfCellValue, { color: (tele?.bat ?? 0) > 20 ? colors.accent : colors.danger }]}>{tele?.bat > 0 ? `%${tele.bat}` : "—"}</Text></View>
+                <View style={styles.vlfCell}><Text style={[styles.vlfCellLabel, { color: colors.mutedForeground }]}>Mesh Consensus</Text><Text style={[styles.vlfCellValue, { color: consensus.status !== "Normal" ? colors.danger : colors.accent }]}>{consensus.status}</Text></View>
               </View>
-              <Text style={[styles.vlfMeta, { color: colors.mutedForeground }]}>
-                Node: {tele?.nodeId ?? "—"} · {new Date(tele?.receivedAt ?? Date.now()).toLocaleTimeString("tr-TR")}
-              </Text>
+              <Text style={[styles.vlfMeta, { color: colors.mutedForeground }]}>Node: {tele?.nodeId ?? "—"} · {new Date(tele?.receivedAt ?? Date.now()).toLocaleTimeString("tr-TR")}</Text>
             </>
           ) : isConnected ? (
             <View style={[styles.vlfStatus, { backgroundColor: colors.primary + "22", borderColor: colors.primary + "44" }]}>
-              <Feather name="bluetooth" size={14} color={colors.primary} />
-              <Text style={[styles.vlfStatusText, { color: colors.primary }]}>
-                {connectedDevice.name ?? connectedDevice.id} bağlı — VLF verisi bekleniyor...
-              </Text>
+              <Feather name="bluetooth" size={14} color={colors.primary} /><Text style={[styles.vlfStatusText, { color: colors.primary }]}>{connectedDevice.name ?? connectedDevice.id} bağlı — VLF verisi bekleniyor...</Text>
             </View>
           ) : (
             <View style={[styles.vlfStatus, { backgroundColor: colors.warning + "22", borderColor: colors.warning + "44" }]}>
-              <Feather name="clock" size={14} color={colors.warning} />
-              <Text style={[styles.vlfStatusText, { color: colors.warning }]}>Donanım Bağlı Değil — BLE ekranından bağlayın</Text>
+              <Feather name="clock" size={14} color={colors.warning} /><Text style={[styles.vlfStatusText, { color: colors.warning }]}>Donanım Bağlı Değil — BLE ekranından bağlayın</Text>
             </View>
           )}
         </View>
 
-        {/* NASA Solar Flares */}
-        <View style={styles.sectionHeader}>
-          <Text style={[styles.sectionTitle, { color: colors.foreground }]}>Güneş Patlamaları (Son 30 Gün)</Text>
-          <Text style={[styles.sourceLabel, { color: colors.primary }]}>NASA DONKI</Text>
-        </View>
-
-        {loading ? <ActivityIndicator color={colors.primary} style={{ marginVertical: 24 }} /> :
-          error ? (
-            <View style={[styles.errorCard, { backgroundColor: colors.card, borderColor: colors.border }]}>
-              <Feather name="wifi-off" size={24} color={colors.mutedForeground} />
-              <Text style={[styles.errorText, { color: colors.mutedForeground }]}>NASA DONKI verisi alınamadı</Text>
-              <Pressable style={[styles.retryBtn, { backgroundColor: colors.primary }]} onPress={fetchData}>
-                <Text style={[styles.retryText, { color: colors.background }]}>Tekrar Dene</Text>
-              </Pressable>
+        {/* ☀️ Güneş-VLF İlişkisi */}
+        {isConnected && hasData && (
+          <View style={[styles.relationCard, { backgroundColor: colors.card, borderColor: colors.warning + "44" }]}>
+            <View style={styles.relationHeader}><Feather name="sun" size={18} color={colors.warning} /><Text style={[styles.relationTitle, { color: colors.foreground }]}>Güneş Aktivitesi & VLF</Text></View>
+            <View style={styles.relationRow}>
+              <View style={styles.relationItem}><Text style={[styles.relationLabel, { color: colors.mutedForeground }]}>VLF Aktivite</Text><Text style={[styles.relationValue, { color: tele?.act !== undefined ? (tele.act > 50 ? colors.danger : tele.act > 25 ? colors.warning : colors.accent) : colors.mutedForeground }]}>{tele?.act !== undefined ? tele.act.toFixed(1) : "—"}</Text></View>
+              <Feather name="arrow-right" size={16} color={colors.mutedForeground} />
+              <View style={styles.relationItem}><Text style={[styles.relationLabel, { color: colors.mutedForeground }]}>Schumann</Text><Text style={[styles.relationValue, { color: tele?.sch_active ? colors.accent : colors.danger }]}>{tele?.sch_hz !== undefined ? tele.sch_hz.toFixed(2) + " Hz" : "—"}</Text></View>
             </View>
-          ) : flares.length === 0 ? (
-            <View style={[styles.emptyCard, { backgroundColor: colors.card, borderColor: colors.border }]}>
-              <Feather name="sun" size={28} color={colors.mutedForeground} />
-              <Text style={[styles.emptyText, { color: colors.mutedForeground }]}>Bu dönemde patlama kaydedilmedi</Text>
-            </View>
-          ) : (
-            flares.map(f => {
-              const cls = flareClass(f.classType);
-              return (
-                <View key={f.flrID} style={[styles.flareCard, { backgroundColor: colors.card, borderColor: colors.border }]}>
-                  <View style={styles.flareTop}>
-                    <View style={[styles.classBadge, { backgroundColor: cls.bg }]}>
-                      <Text style={[styles.classText, { color: cls.text }]}>{f.classType}</Text>
-                    </View>
-                    {f.sourceLocation && <Text style={[styles.location, { color: colors.mutedForeground }]}>{f.sourceLocation}</Text>}
-                  </View>
-                  <View style={styles.flareRow}>
-                    <Feather name="clock" size={12} color={colors.mutedForeground} />
-                    <Text style={[styles.flareTime, { color: colors.mutedForeground }]}>{new Date(f.beginTime).toLocaleString("tr-TR")}</Text>
-                  </View>
-                  {f.activeRegionNum && <Text style={[styles.region, { color: colors.primary }]}>Aktif Bölge: AR{f.activeRegionNum}</Text>}
-                </View>
-              );
-            })
-          )}
-
-        {/* Geomagnetic Storms */}
-        {!loading && !error && gsts.length > 0 && (
-          <>
-            <Text style={[styles.sectionTitle, { color: colors.foreground, marginTop: 24 }]}>Jeomanyetik Fırtınalar</Text>
-            {gsts.map(g => (
-              <View key={g.gstID} style={[styles.gstCard, { backgroundColor: colors.card, borderColor: colors.danger + "44" }]}>
-                <View style={styles.gstTop}>
-                  <Feather name="zap" size={16} color={colors.danger} />
-                  <Text style={[styles.gstTime, { color: colors.foreground }]}>{new Date(g.startTime).toLocaleDateString("tr-TR")}</Text>
-                </View>
-                {g.allKpIndex && g.allKpIndex.length > 0 && (
-                  <Text style={[styles.kp, { color: colors.warning }]}>Maks Kp: {Math.max(...g.allKpIndex.map(k => k.kpIndex))}</Text>
-                )}
-              </View>
-            ))}
-          </>
+            <Text style={[styles.relationDesc, { color: colors.mutedForeground }]}>
+              {tele?.act !== undefined && tele.sch_active ? (
+                tele.act > 50 ? "🌪️ Yüksek aktivite — Güneş rüzgârı iyonosferi etkiliyor olabilir." :
+                tele.act > 25 ? "🌤️ Orta aktivite — Normal uzay havası koşulları." :
+                "🌱 Sakin — İyonosfer kararlı, gözlem için uygun."
+              ) : "Veri bekleniyor…"}
+            </Text>
+          </View>
         )}
+
+        <View style={styles.sectionHeader}><Text style={[styles.sectionTitle, { color: colors.foreground }]}>Güneş Patlamaları (Son 30 Gün)</Text><Text style={[styles.sourceLabel, { color: colors.primary }]}>NASA DONKI</Text></View>
+        {loading ? <ActivityIndicator color={colors.primary} style={{ marginVertical: 24 }} /> :
+          error ? <View style={[styles.errorCard, { backgroundColor: colors.card, borderColor: colors.border }]}><Feather name="wifi-off" size={24} color={colors.mutedForeground} /><Text style={[styles.errorText, { color: colors.mutedForeground }]}>NASA DONKI verisi alınamadı</Text><Pressable style={[styles.retryBtn, { backgroundColor: colors.primary }]} onPress={fetchData}><Text style={[styles.retryText, { color: colors.background }]}>Tekrar Dene</Text></Pressable></View> :
+          flares.length === 0 ? <View style={[styles.emptyCard, { backgroundColor: colors.card, borderColor: colors.border }]}><Feather name="sun" size={28} color={colors.mutedForeground} /><Text style={[styles.emptyText, { color: colors.mutedForeground }]}>Bu dönemde patlama kaydedilmedi</Text></View> :
+          flares.map(f => { const cls = flareClass(f.classType); return (
+            <View key={f.flrID} style={[styles.flareCard, { backgroundColor: colors.card, borderColor: colors.border }]}>
+              <View style={styles.flareTop}><View style={[styles.classBadge, { backgroundColor: cls.bg }]}><Text style={[styles.classText, { color: cls.text }]}>{f.classType}</Text></View>{f.sourceLocation && <Text style={[styles.location, { color: colors.mutedForeground }]}>{f.sourceLocation}</Text>}</View>
+              <View style={styles.flareRow}><Feather name="clock" size={12} color={colors.mutedForeground} /><Text style={[styles.flareTime, { color: colors.mutedForeground }]}>{new Date(f.beginTime).toLocaleString("tr-TR")}</Text></View>
+              {f.activeRegionNum && <Text style={[styles.region, { color: colors.primary }]}>Aktif Bölge: AR{f.activeRegionNum}</Text>}
+            </View>
+          );})}
+
+        {!loading && !error && gsts.length > 0 && (<><Text style={[styles.sectionTitle, { color: colors.foreground, marginTop: 24 }]}>Jeomanyetik Fırtınalar</Text>{gsts.map(g => (<View key={g.gstID} style={[styles.gstCard, { backgroundColor: colors.card, borderColor: colors.danger + "44" }]}><View style={styles.gstTop}><Feather name="zap" size={16} color={colors.danger} /><Text style={[styles.gstTime, { color: colors.foreground }]}>{new Date(g.startTime).toLocaleDateString("tr-TR")}</Text></View>{g.allKpIndex && g.allKpIndex.length > 0 && <Text style={[styles.kp, { color: colors.warning }]}>Maks Kp: {Math.max(...g.allKpIndex.map(k => k.kpIndex))}</Text>}</View>))}</>)}
       </ScrollView>
     </View>
   );
@@ -230,6 +140,14 @@ const styles = StyleSheet.create({
   vlfCellLabel: { fontSize: 11, fontFamily: "Inter_500Medium" },
   vlfCellValue: { fontSize: 18, fontFamily: "Inter_700Bold" },
   vlfMeta: { fontSize: 11, fontFamily: "Inter_400Regular" },
+  relationCard: { borderRadius: 16, borderWidth: 1, padding: 16, marginBottom: 16, gap: 8 },
+  relationHeader: { flexDirection: "row", alignItems: "center", gap: 8 },
+  relationTitle: { fontSize: 15, fontFamily: "Inter_700Bold" },
+  relationRow: { flexDirection: "row", alignItems: "center", justifyContent: "center", gap: 12, paddingVertical: 6 },
+  relationItem: { alignItems: "center" },
+  relationLabel: { fontSize: 11, fontFamily: "Inter_500Medium" },
+  relationValue: { fontSize: 20, fontFamily: "Inter_700Bold" },
+  relationDesc: { fontSize: 13, fontFamily: "Inter_400Regular", textAlign: "center" },
   sectionHeader: { flexDirection: "row", alignItems: "center", justifyContent: "space-between", marginBottom: 12 },
   sectionTitle: { fontSize: 17, fontFamily: "Inter_700Bold" },
   sourceLabel: { fontSize: 12, fontFamily: "Inter_600SemiBold" },
