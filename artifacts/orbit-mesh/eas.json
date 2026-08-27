@@ -8,10 +8,7 @@
       "developmentClient": true,
       "distribution": "internal",
       "node": "22.11.0",
-      "packageManager": "pnpm",
-      "pnpm": {
-        "installCommand": "pnpm install --no-frozen-lockfile"
-      }
+      "pnpm": "pnpm install --no-frozen-lockfile"
     },
     "preview": {
       "android": {
@@ -19,10 +16,7 @@
       },
       "channel": "preview",
       "node": "22.11.0",
-      "packageManager": "pnpm",
-      "pnpm": {
-        "installCommand": "pnpm install --no-frozen-lockfile"
-      },
+      "pnpm": "pnpm install --no-frozen-lockfile",
       "env": {
         "EAS_BUILD_SKIP_LOCKFILE_CHECK": "1"
       }
@@ -33,10 +27,7 @@
       },
       "channel": "production",
       "node": "22.11.0",
-      "packageManager": "pnpm",
-      "pnpm": {
-        "installCommand": "pnpm install --no-frozen-lockfile"
-      }
+      "pnpm": "pnpm install --no-frozen-lockfile"
     }
   },
   "submit": {
