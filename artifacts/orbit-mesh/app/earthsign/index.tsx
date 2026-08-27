@@ -1,3 +1,6 @@
+// app/earthsign/index.tsx
+// ORBIT-MESH PRO V2.1 — FIRMWARE UYUMLU (vlf_amp, bat, state)
+
 import { Feather } from "@expo/vector-icons";
 import { LinearGradient } from "expo-linear-gradient";
 import { router } from "expo-router";
@@ -9,6 +12,7 @@ import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { useAuth } from "@/context/AuthContext";
 import { useBle } from "@/context/BleContext";
 import { useColors } from "@/hooks/useColors";
+import { OrbitMeshTelemetry } from "@/utils/telemetryParser";
 
 interface EarthSignRecord {
   id: string;
@@ -20,9 +24,8 @@ interface EarthSignRecord {
   location?: string;
   notes?: string;
   vlfHz?: number;
-  vlfAmplitude?: number;
-  mx?: number; my?: number; mz?: number;
-  ax?: number; ay?: number; az?: number;
+  vlfAmplitude?: number;   // vlf_amp'den alınacak
+  // IMU alanları kaldırıldı (telefon tarafından)
   anomaly?: boolean;
   anomalyScore?: number;
   consensusStatus?: string;
@@ -40,6 +43,8 @@ export default function EarthSignScreen() {
   const [title, setTitle] = useState("");
   const [notes, setNotes] = useState("");
   const topPad = Platform.OS === "web" ? 67 : insets.top;
+
+  const tele = latestTelemetry as OrbitMeshTelemetry | null;
 
   React.useEffect(() => {
     load();
@@ -59,13 +64,8 @@ export default function EarthSignScreen() {
         deviceId: connectedDevice?.id ?? "MESH",
         userId: user?.id ?? "anonymous",
         hash,
-        vlfHz: latestTelemetry?.vlf_hz,
-        vlfAmplitude: latestTelemetry?.vlf_amplitude,
-        // [ŞEMA-PATCH] Kaynak artık latestTelemetry.gx/gy/gz (jiroskop). Kayıt
-        // şemasındaki (EarthSignRecord, AsyncStorage'da persisted) mx/my/mz alan
-        // adları BİLİNÇLİ OLARAK değiştirilmedi — eski kayıtlarla uyumluluk için.
-        mx: latestTelemetry?.gx, my: latestTelemetry?.gy, mz: latestTelemetry?.gz,
-        ax: latestTelemetry?.ax, ay: latestTelemetry?.ay, az: latestTelemetry?.az,
+        vlfHz: tele?.vlf_hz,
+        vlfAmplitude: tele?.vlf_amp,   // ✅ düzeltildi
         anomaly: true,
         anomalyScore: anomalyScore ? Math.round(anomalyScore.total) : undefined,
         consensusStatus: consensus.status,
@@ -96,11 +96,9 @@ export default function EarthSignScreen() {
       userId: user?.id ?? "anonymous",
       hash,
       notes: notes.trim() || undefined,
-      vlfHz: latestTelemetry?.vlf_hz,
-      vlfAmplitude: latestTelemetry?.vlf_amplitude,
-      mx: latestTelemetry?.gx, my: latestTelemetry?.gy, mz: latestTelemetry?.gz,
-      ax: latestTelemetry?.ax, ay: latestTelemetry?.ay, az: latestTelemetry?.az,
-      anomaly: latestTelemetry?.anomaly ?? false,
+      vlfHz: tele?.vlf_hz,
+      vlfAmplitude: tele?.vlf_amp,   // ✅ düzeltildi
+      anomaly: tele?.anomaly ?? false,
       anomalyScore: anomalyScore ? Math.round(anomalyScore.total) : undefined,
       consensusStatus: consensus.status,
       source: connectedDevice ? "ble" : "manual",
@@ -112,7 +110,7 @@ export default function EarthSignScreen() {
   }
 
   const isConnected = !!connectedDevice;
-  const hasData = !!latestTelemetry;
+  const hasData = !!tele;
 
   return (
     <View style={[styles.root, { backgroundColor: colors.background }]}>
@@ -145,7 +143,7 @@ export default function EarthSignScreen() {
             <Text style={[styles.statusText, { color: consensus.status !== "Normal" ? colors.danger : colors.accent }]}>
               {consensus.status !== "Normal"
                 ? `Mesh Anomali: ${consensus.status} (${consensus.anomalyCount} node)`
-                : `Aktif: ${connectedDevice.name ?? connectedDevice.id} · Node: ${latestTelemetry.nodeId}`}
+                : `Aktif: ${connectedDevice.name ?? connectedDevice.id} · Node: ${tele.nodeId}`}
             </Text>
           </View>
         ) : isConnected ? (
@@ -157,7 +155,7 @@ export default function EarthSignScreen() {
           </View>
         ) : null}
 
-        {/* Live BLE Panel */}
+        {/* Live BLE Panel - Firmware uyumlu */}
         {isConnected && hasData && (
           <View style={[styles.blePanel, { backgroundColor: colors.card, borderColor: colors.secondary + "44" }]}>
             <View style={styles.blePanelHeader}>
@@ -167,22 +165,22 @@ export default function EarthSignScreen() {
             <View style={styles.bleGrid}>
               <View style={styles.bleCell}>
                 <Text style={[styles.bleCellLabel, { color: colors.mutedForeground }]}>VLF</Text>
-                <Text style={[styles.bleCellValue, { color: colors.primary }]}>{latestTelemetry.vlf_hz > 0 ? `${latestTelemetry.vlf_hz.toFixed(2)} Hz` : "—"}</Text>
+                <Text style={[styles.bleCellValue, { color: colors.primary }]}>{tele.vlf_hz > 0 ? `${tele.vlf_hz.toFixed(2)} Hz` : "—"}</Text>
               </View>
               <View style={styles.bleCell}>
-                <Text style={[styles.bleCellLabel, { color: colors.mutedForeground }]}>Amplitüd</Text>
-                <Text style={[styles.bleCellValue, { color: colors.primary }]}>{latestTelemetry.vlf_amplitude > 0 ? latestTelemetry.vlf_amplitude.toFixed(3) : "—"}</Text>
+                <Text style={[styles.bleCellLabel, { color: colors.mutedForeground }]}>Genlik</Text>
+                <Text style={[styles.bleCellValue, { color: colors.primary }]}>{tele.vlf_amp > 0 ? tele.vlf_amp.toFixed(1) : "—"}</Text>
               </View>
               <View style={styles.bleCell}>
-                <Text style={[styles.bleCellLabel, { color: colors.mutedForeground }]}>Sıcaklık</Text>
-                <Text style={[styles.bleCellValue, { color: colors.foreground }]}>{latestTelemetry.temp_c !== 0 ? `${latestTelemetry.temp_c.toFixed(1)}°C` : "—"}</Text>
+                <Text style={[styles.bleCellLabel, { color: colors.mutedForeground }]}>Batarya</Text>
+                <Text style={[styles.bleCellValue, { color: tele.bat > 20 ? colors.accent : colors.danger }]}>{tele.bat > 0 ? `%${tele.bat}` : "—"}</Text>
               </View>
               <View style={styles.bleCell}>
                 <Text style={[styles.bleCellLabel, { color: colors.mutedForeground }]}>Durum</Text>
-                <Text style={[styles.bleCellValue, { color: latestTelemetry.anomaly ? colors.danger : colors.accent }]}>{latestTelemetry.anomaly ? "⚠ ANOMALİ" : "Normal"}</Text>
+                <Text style={[styles.bleCellValue, { color: tele.anomaly ? colors.danger : colors.accent }]}>{tele.anomaly ? "ANOMALI" : "Normal"}</Text>
               </View>
               <View style={styles.bleCell}>
-                <Text style={[styles.bleCellLabel, { color: colors.mutedForeground }]}>Score</Text>
+                <Text style={[styles.bleCellLabel, { color: colors.mutedForeground }]}>Skor</Text>
                 <Text style={[styles.bleCellValue, { color: anomalyScore ? (anomalyScore.total >= 60 ? colors.danger : anomalyScore.total >= 30 ? colors.warning : colors.accent) : colors.mutedForeground }]}>
                   {anomalyScore ? Math.round(anomalyScore.total) : "—"}
                 </Text>
@@ -192,7 +190,7 @@ export default function EarthSignScreen() {
                 <Text style={[styles.bleCellValue, { color: consensus.status !== "Normal" ? colors.danger : colors.accent }]}>{consensus.status}</Text>
               </View>
             </View>
-            <Text style={[styles.bleMeta, { color: colors.mutedForeground }]}>{new Date(latestTelemetry.receivedAt).toLocaleTimeString("tr-TR")}</Text>
+            <Text style={[styles.bleMeta, { color: colors.mutedForeground }]}>{new Date(tele.receivedAt).toLocaleTimeString("tr-TR")}</Text>
           </View>
         )}
 
@@ -203,7 +201,7 @@ export default function EarthSignScreen() {
               <View style={[styles.formNote, { backgroundColor: colors.secondary + "22" }]}>
                 <Feather name="info" size={12} color={colors.secondary} />
                 <Text style={[styles.formNoteText, { color: colors.secondary }]}>
-                  Cihaz: {connectedDevice.name ?? connectedDevice.id}{hasData ? ` · VLF=${latestTelemetry.vlf_hz.toFixed(2)}Hz` : ""}
+                  Cihaz: {connectedDevice.name ?? connectedDevice.id}{hasData ? ` · VLF=${tele.vlf_hz.toFixed(2)}Hz` : ""}
                 </Text>
               </View>
             )}
@@ -236,8 +234,8 @@ export default function EarthSignScreen() {
               </View>
               <Text style={[styles.recordTime, { color: colors.mutedForeground }]}>{new Date(r.timestamp).toLocaleString("tr-TR")}</Text>
               {r.deviceId && r.deviceId !== "LOCAL" && <Text style={[styles.recordDevice, { color: colors.primary }]}>Cihaz: {r.deviceId}</Text>}
-              {r.vlfHz !== undefined && r.vlfHz > 0 && <Text style={[styles.recordMeta, { color: colors.primary }]}>VLF: {r.vlfHz.toFixed(2)} Hz · Amp: {(r.vlfAmplitude ?? 0).toFixed(3)}</Text>}
-              {r.anomalyScore !== undefined && <Text style={[styles.recordMeta, { color: colors.warning }]}>Score: {r.anomalyScore} | Consensus: {r.consensusStatus}</Text>}
+              {r.vlfHz !== undefined && r.vlfHz > 0 && <Text style={[styles.recordMeta, { color: colors.primary }]}>VLF: {r.vlfHz.toFixed(2)} Hz · Amp: {(r.vlfAmplitude ?? 0).toFixed(1)}</Text>}
+              {r.anomalyScore !== undefined && <Text style={[styles.recordMeta, { color: colors.warning }]}>Skor: {r.anomalyScore} | Consensus: {r.consensusStatus}</Text>}
               {r.nodeList && r.nodeList.length > 0 && <Text style={[styles.recordMeta, { color: colors.mutedForeground }]}>Nodes: {r.nodeList.join(", ")}</Text>}
               {r.notes && <Text style={[styles.recordNotes, { color: colors.mutedForeground }]}>{r.notes}</Text>}
             </View>
