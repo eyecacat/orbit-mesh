@@ -1,5 +1,6 @@
 // app/(tabs)/index.tsx
-// Ana sayfa — Mesh ağı durumu, bağlı cihaz sayısı ve anomali özeti.
+// ORBIT-MESH — ANA SAYFA
+// Mesh ağı durumu, bağlı cihaz sayısı, anomali özeti ve PQC (Kuantum Sonrası Kriptografi) durumu.
 
 import { Feather } from "@expo/vector-icons";
 import { LinearGradient } from "expo-linear-gradient";
@@ -51,12 +52,14 @@ type DailyTask = {
   icon: keyof typeof Feather.glyphMap;
 };
 
+// NOT: PQC artık burada, diğer büyük kısayollar (Atlas, Missions) ile aynı
+// seviyede gerçek bir tıklanabilir kısayol kartı. /pqc ekranına yönlendirir.
 const FEATURE_TILES: FeatureTile[] = [
   {
     id: "atlas",
     title: "Gökyüzü Atlası",
     subtitle: "Gezegenler, yıldızlar ve galaksiler",
-    description: "Güneş Sistemi’ni ve evren yapılarını keşfet.",
+    description: "Güneş Sistemi'ni ve evren yapılarını keşfet.",
     icon: "globe",
     color: "#4CC9F0",
     route: "/atlas",
@@ -69,6 +72,15 @@ const FEATURE_TILES: FeatureTile[] = [
     icon: "navigation",
     color: "#F97316",
     route: "/missions",
+  },
+  {
+    id: "pqc",
+    title: "Kuantum Sonrası Güvenlik",
+    subtitle: "LWE tabanlı PQC şifreleme katmanı",
+    description: "VLF sinyalinden üretilen entropiyle her paketi imzalayan, kuantum bilgisayarlara dirençli güvenlik sistemini incele.",
+    icon: "shield",
+    color: "#8B5CF6",
+    route: "/pqc",
   },
 ];
 
@@ -175,9 +187,22 @@ export default function HomeScreen() {
     );
   }
 
-  const hasPqc = pqcStatus && (pqcStatus.totalNodes ?? 0) > 0;
+  // ── PQC güvenlik durumu ─────────────────────────────────────────────────
+  // pqcEngine.ts (PQCSessionManager.getSecurityStatus) alanlarıyla birebir
+  // eşleşir: totalNodes, pqcActiveNodes, recentVerifications, recentFailures,
+  // failureRate. Kart artık koşulsuz gösterilir — bağlantı yoksa "Bekleniyor"
+  // durumunda görünür, diğer modüller gibi her zaman orada durur.
+  const pqcTotalNodes = pqcStatus?.totalNodes ?? 0;
+  const pqcActiveCount = pqcStatus?.pqcActiveNodes?.length ?? 0;
+  const pqcVerifications = pqcStatus?.recentVerifications ?? 0;
   const pqcFailures = pqcStatus?.recentFailures ?? 0;
   const pqcFailureRate = ((pqcStatus?.failureRate ?? 0) * 100).toFixed(0);
+  const pqcIsLive = pqcTotalNodes > 0;
+  // Aktif oturumun kimliği (pqcEngine.ts'deki sessionId) — "her sinyalde
+  // değişen, tekrarlanmayan" oturumun somut, gösterilebilir kanıtı.
+  const pqcSessionId: string | null = pqcStatus?.pqcActiveNodes?.[0]
+    ? (latestTelemetry?.pqcSessionId ?? null)
+    : null;
 
   // Mesh durumu
   const nodeCount = connectedDevices.length;
@@ -451,46 +476,66 @@ export default function HomeScreen() {
           )}
         </View>
 
-        {/* PQC Güvenlik Kartı */}
-        {hasPqc && (
-          <View style={[styles.pqcCard, { backgroundColor: colors.card, borderColor: colors.primary + "44" }]}>
-            <View style={styles.pqcHeader}>
-              <Feather name="shield" size={18} color={colors.primary} />
-              <Text style={[styles.pqcTitle, { color: colors.foreground }]}>Kuantum Sonrası Güvenlik (PQC)</Text>
-              <View style={[styles.pqcBadge, { backgroundColor: pqcFailures > 0 ? colors.danger + "33" : colors.accent + "33" }]}>
-                <Text style={[styles.pqcBadgeText, { color: pqcFailures > 0 ? colors.danger : colors.accent }]}>
-                  {pqcFailures > 0 ? "Saldırı Engellendi" : "Güvende"}
-                </Text>
-              </View>
+        {/* 🔐 PQC Güvenlik Kartı — HER ZAMAN GÖRÜNÜR, koşula bağlı değil */}
+        <View style={[styles.pqcCard, { backgroundColor: colors.card, borderColor: colors.primary + "44" }]}>
+          <View style={styles.pqcHeader}>
+            <Feather name="shield" size={18} color={colors.primary} />
+            <Text style={[styles.pqcTitle, { color: colors.foreground }]}>Kuantum Sonrası Güvenlik (PQC)</Text>
+            <View style={[styles.pqcBadge, { backgroundColor: pqcFailures > 0 ? colors.danger + "33" : pqcIsLive ? colors.accent + "33" : colors.muted + "33" }]}>
+              <Text style={[styles.pqcBadgeText, { color: pqcFailures > 0 ? colors.danger : pqcIsLive ? colors.accent : colors.mutedForeground }]}>
+                {pqcFailures > 0 ? "Saldırı Engellendi" : pqcIsLive ? "Aktif" : "Bekleniyor"}
+              </Text>
             </View>
-            <View style={styles.pqcGrid}>
-              <View style={styles.pqcCell}>
-                <Text style={[styles.pqcLabel, { color: colors.mutedForeground }]}>Aktif Düğüm</Text>
-                <Text style={[styles.pqcValue, { color: colors.foreground }]}>
-                  {pqcStatus.pqcActiveNodes?.length ?? 0}/{pqcStatus.totalNodes ?? 0}
-                </Text>
-              </View>
-              <View style={styles.pqcCell}>
-                <Text style={[styles.pqcLabel, { color: colors.mutedForeground }]}>Doğrulanan Paket</Text>
-                <Text style={[styles.pqcValue, { color: colors.accent }]}>{pqcStatus.recentVerifications ?? 0}</Text>
-              </View>
-              <View style={styles.pqcCell}>
-                <Text style={[styles.pqcLabel, { color: colors.mutedForeground }]}>Hata Oranı</Text>
-                <Text style={[styles.pqcValue, { color: pqcFailures > 0 ? colors.danger : colors.accent }]}>
-                  {pqcFailureRate}%
-                </Text>
-              </View>
-            </View>
-            {pqcFailures > 0 && (
-              <View style={[styles.pqcAlert, { backgroundColor: colors.danger + "22", borderColor: colors.danger + "44" }]}>
-                <Feather name="alert-triangle" size={14} color={colors.danger} />
-                <Text style={[styles.pqcAlertText, { color: colors.danger }]}>
-                  Geçersiz paket imzası tespit edildi — zararlı veri engellendi.
-                </Text>
-              </View>
-            )}
           </View>
-        )}
+
+          <Text style={[styles.pqcDesc, { color: colors.mutedForeground }]}>
+            VLF anteninden BLE ile gelen her paket, kafes tabanlı (LWE) bir imza ile doğrulanır. Her yeni oturumda anahtar
+            çifti sıfırdan üretilir — bu yüzden hiçbir imza bir öncekiyle aynı olmaz ve klasik ya da kuantum bilgisayarla
+            geriye doğru tahmin edilemez.
+          </Text>
+
+          <View style={styles.pqcGrid}>
+            <View style={styles.pqcCell}>
+              <Text style={[styles.pqcLabel, { color: colors.mutedForeground }]}>Aktif Düğüm</Text>
+              <Text style={[styles.pqcValue, { color: colors.foreground }]}>
+                {pqcActiveCount}/{Math.max(pqcTotalNodes, pqcActiveCount)}
+              </Text>
+            </View>
+            <View style={styles.pqcCell}>
+              <Text style={[styles.pqcLabel, { color: colors.mutedForeground }]}>Doğrulanan Paket (60sn)</Text>
+              <Text style={[styles.pqcValue, { color: colors.accent }]}>{pqcVerifications}</Text>
+            </View>
+            <View style={styles.pqcCell}>
+              <Text style={[styles.pqcLabel, { color: colors.mutedForeground }]}>Hata Oranı</Text>
+              <Text style={[styles.pqcValue, { color: parseFloat(pqcFailureRate) > 10 ? colors.danger : colors.accent }]}>
+                {pqcFailureRate}%
+              </Text>
+            </View>
+          </View>
+
+          {pqcSessionId && (
+            <Text style={[styles.pqcSeed, { color: colors.mutedForeground }]}>
+              Oturum: {pqcSessionId.substring(0, 16)}…
+            </Text>
+          )}
+
+          {pqcFailures > 0 && (
+            <View style={[styles.pqcAlert, { backgroundColor: colors.danger + "22", borderColor: colors.danger + "44" }]}>
+              <Feather name="alert-triangle" size={14} color={colors.danger} />
+              <Text style={[styles.pqcAlertText, { color: colors.danger }]}>
+                Geçersiz paket imzası tespit edildi — manipüle edilmiş veri reddedildi.
+              </Text>
+            </View>
+          )}
+
+          <Pressable
+            style={[styles.pqcDetailBtn, { backgroundColor: colors.primary + "22" }]}
+            onPress={() => router.push("/pqc" as any)}
+          >
+            <Text style={[styles.pqcDetailText, { color: colors.primary }]}>Güvenlik katmanını incele</Text>
+            <Feather name="chevron-right" size={14} color={colors.primary} />
+          </Pressable>
+        </View>
 
         {/* Astronomi Kısa Yolları */}
         <Text style={[styles.sectionTitle, { color: colors.foreground }]}>Astronomi Kısa Yolları</Text>
@@ -756,10 +801,12 @@ const styles = StyleSheet.create({
   pqcTitle: { flex: 1, fontSize: 14, fontFamily: "Inter_700Bold" },
   pqcBadge: { paddingHorizontal: 10, paddingVertical: 4, borderRadius: 8 },
   pqcBadgeText: { fontSize: 11, fontFamily: "Inter_700Bold" },
+  pqcDesc: { fontSize: 12, lineHeight: 18, fontFamily: "Inter_400Regular" },
   pqcGrid: { flexDirection: "row", gap: 10 },
   pqcCell: { flex: 1, gap: 2 },
   pqcLabel: { fontSize: 10, fontFamily: "Inter_500Medium" },
   pqcValue: { fontSize: 16, fontFamily: "Inter_700Bold" },
+  pqcSeed: { fontSize: 11, fontFamily: "Inter_400Regular" },
   pqcAlert: {
     flexDirection: "row",
     alignItems: "center",
@@ -769,6 +816,16 @@ const styles = StyleSheet.create({
     padding: 10,
   },
   pqcAlertText: { flex: 1, fontSize: 12, fontFamily: "Inter_500Medium" },
+  pqcDetailBtn: {
+    flexDirection: "row",
+    alignItems: "center",
+    alignSelf: "flex-start",
+    gap: 4,
+    paddingHorizontal: 12,
+    paddingVertical: 6,
+    borderRadius: 999,
+  },
+  pqcDetailText: { fontSize: 12, fontFamily: "Inter_600SemiBold" },
   featureGrid: {
     flexDirection: "row",
     flexWrap: "wrap",
