@@ -1,5 +1,5 @@
 // app/earthsign/index.tsx
-// ORBIT-MESH PRO V2.1 — FIRMWARE UYUMLU (vlf_amp, bat, state)
+// ORBIT-MESH PRO V2.1 — FIRMWARE UYUMLU (vlf_amp, bat, state, sch_hz, mot_vel)
 
 import { Feather } from "@expo/vector-icons";
 import { LinearGradient } from "expo-linear-gradient";
@@ -24,8 +24,13 @@ interface EarthSignRecord {
   location?: string;
   notes?: string;
   vlfHz?: number;
-  vlfAmplitude?: number;   // vlf_amp'den alınacak
-  // IMU alanları kaldırıldı (telefon tarafından)
+  vlfAmp?: number;       // firmware'den vlf_amp
+  bat?: number;          // firmware'den bat
+  state?: string;        // firmware'den state
+  schHz?: number;        // firmware'den sch_hz
+  schActive?: boolean;   // firmware'den sch_active
+  motVel?: number;       // firmware'den mot_vel
+  motTrend?: string;     // firmware'den mot_trend
   anomaly?: boolean;
   anomalyScore?: number;
   consensusStatus?: string;
@@ -65,7 +70,13 @@ export default function EarthSignScreen() {
         userId: user?.id ?? "anonymous",
         hash,
         vlfHz: tele?.vlf_hz,
-        vlfAmplitude: tele?.vlf_amp,   // ✅ düzeltildi
+        vlfAmp: tele?.vlf_amp,
+        bat: tele?.bat,
+        state: tele?.state,
+        schHz: tele?.sch_hz,
+        schActive: tele?.sch_active,
+        motVel: tele?.mot_vel,
+        motTrend: tele?.mot_trend,
         anomaly: true,
         anomalyScore: anomalyScore ? Math.round(anomalyScore.total) : undefined,
         consensusStatus: consensus.status,
@@ -97,7 +108,13 @@ export default function EarthSignScreen() {
       hash,
       notes: notes.trim() || undefined,
       vlfHz: tele?.vlf_hz,
-      vlfAmplitude: tele?.vlf_amp,   // ✅ düzeltildi
+      vlfAmp: tele?.vlf_amp,
+      bat: tele?.bat,
+      state: tele?.state,
+      schHz: tele?.sch_hz,
+      schActive: tele?.sch_active,
+      motVel: tele?.mot_vel,
+      motTrend: tele?.mot_trend,
       anomaly: tele?.anomaly ?? false,
       anomalyScore: anomalyScore ? Math.round(anomalyScore.total) : undefined,
       consensusStatus: consensus.status,
@@ -164,11 +181,11 @@ export default function EarthSignScreen() {
             </View>
             <View style={styles.bleGrid}>
               <View style={styles.bleCell}>
-                <Text style={[styles.bleCellLabel, { color: colors.mutedForeground }]}>VLF</Text>
+                <Text style={[styles.bleCellLabel, { color: colors.mutedForeground }]}>VLF Frekans</Text>
                 <Text style={[styles.bleCellValue, { color: colors.primary }]}>{tele.vlf_hz > 0 ? `${tele.vlf_hz.toFixed(2)} Hz` : "—"}</Text>
               </View>
               <View style={styles.bleCell}>
-                <Text style={[styles.bleCellLabel, { color: colors.mutedForeground }]}>Genlik</Text>
+                <Text style={[styles.bleCellLabel, { color: colors.mutedForeground }]}>VLF Genlik</Text>
                 <Text style={[styles.bleCellValue, { color: colors.primary }]}>{tele.vlf_amp > 0 ? tele.vlf_amp.toFixed(1) : "—"}</Text>
               </View>
               <View style={styles.bleCell}>
@@ -177,10 +194,24 @@ export default function EarthSignScreen() {
               </View>
               <View style={styles.bleCell}>
                 <Text style={[styles.bleCellLabel, { color: colors.mutedForeground }]}>Durum</Text>
-                <Text style={[styles.bleCellValue, { color: tele.anomaly ? colors.danger : colors.accent }]}>{tele.anomaly ? "ANOMALI" : "Normal"}</Text>
+                <Text style={[styles.bleCellValue, { color: tele.state === "EXTREME" || tele.state === "DISTURBED" ? colors.danger : tele.state === "ACTIVE" ? colors.warning : colors.accent }]}>
+                  {tele.state}
+                </Text>
               </View>
               <View style={styles.bleCell}>
-                <Text style={[styles.bleCellLabel, { color: colors.mutedForeground }]}>Skor</Text>
+                <Text style={[styles.bleCellLabel, { color: colors.mutedForeground }]}>Schumann</Text>
+                <Text style={[styles.bleCellValue, { color: tele.sch_active ? colors.accent : colors.danger }]}>
+                  {tele.sch_hz.toFixed(2)} Hz
+                </Text>
+              </View>
+              <View style={styles.bleCell}>
+                <Text style={[styles.bleCellLabel, { color: colors.mutedForeground }]}>Hareket Hızı</Text>
+                <Text style={[styles.bleCellValue, { color: tele.mot_vel > 1 ? colors.warning : colors.foreground }]}>
+                  {tele.mot_vel.toFixed(2)} km/s
+                </Text>
+              </View>
+              <View style={styles.bleCell}>
+                <Text style={[styles.bleCellLabel, { color: colors.mutedForeground }]}>Anomali Skoru</Text>
                 <Text style={[styles.bleCellValue, { color: anomalyScore ? (anomalyScore.total >= 60 ? colors.danger : anomalyScore.total >= 30 ? colors.warning : colors.accent) : colors.mutedForeground }]}>
                   {anomalyScore ? Math.round(anomalyScore.total) : "—"}
                 </Text>
@@ -234,7 +265,11 @@ export default function EarthSignScreen() {
               </View>
               <Text style={[styles.recordTime, { color: colors.mutedForeground }]}>{new Date(r.timestamp).toLocaleString("tr-TR")}</Text>
               {r.deviceId && r.deviceId !== "LOCAL" && <Text style={[styles.recordDevice, { color: colors.primary }]}>Cihaz: {r.deviceId}</Text>}
-              {r.vlfHz !== undefined && r.vlfHz > 0 && <Text style={[styles.recordMeta, { color: colors.primary }]}>VLF: {r.vlfHz.toFixed(2)} Hz · Amp: {(r.vlfAmplitude ?? 0).toFixed(1)}</Text>}
+              {r.vlfHz !== undefined && r.vlfHz > 0 && <Text style={[styles.recordMeta, { color: colors.primary }]}>VLF: {r.vlfHz.toFixed(2)} Hz · Amp: {(r.vlfAmp ?? 0).toFixed(1)}</Text>}
+              {r.bat !== undefined && <Text style={[styles.recordMeta, { color: r.bat > 20 ? colors.accent : colors.danger }]}>Batarya: %{r.bat}</Text>}
+              {r.state && <Text style={[styles.recordMeta, { color: colors.foreground }]}>Durum: {r.state}</Text>}
+              {r.schHz !== undefined && <Text style={[styles.recordMeta, { color: colors.accent }]}>Schumann: {r.schHz.toFixed(2)} Hz</Text>}
+              {r.motVel !== undefined && <Text style={[styles.recordMeta, { color: colors.secondary }]}>Hız: {r.motVel.toFixed(2)} km/s {r.motTrend}</Text>}
               {r.anomalyScore !== undefined && <Text style={[styles.recordMeta, { color: colors.warning }]}>Skor: {r.anomalyScore} | Consensus: {r.consensusStatus}</Text>}
               {r.nodeList && r.nodeList.length > 0 && <Text style={[styles.recordMeta, { color: colors.mutedForeground }]}>Nodes: {r.nodeList.join(", ")}</Text>}
               {r.notes && <Text style={[styles.recordNotes, { color: colors.mutedForeground }]}>{r.notes}</Text>}
