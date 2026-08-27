@@ -1,5 +1,5 @@
 // app/(tabs)/kesfet.tsx
-// Keşfet ekranı — Mesh Ağı ve Simülasyon modülleri eklendi.
+// Keşfet ekranı — Mesh Ağı, Simülasyon, Harita, Konsensus, Uzay Havası Entegrasyonu
 
 import { BACKEND_URL } from "@/lib/env";
 import { Feather } from "@expo/vector-icons";
@@ -139,6 +139,31 @@ const MODULES = [
     icon: "radio",
     color: "#8B7CF6",
     route: "/simulation",
+  },
+  // ⬇️ YENİ EKLENENLER (Harita, Konsensus, Uzay Havası Entegrasyonu) ⬇️
+  {
+    id: "map",
+    title: "Gözlem Haritası",
+    desc: "Düğüm konumları",
+    icon: "map-pin",
+    color: "#4CC9F0",
+    route: "/map",
+  },
+  {
+    id: "mesh-consensus",
+    title: "Konsensus",
+    desc: "Anomali doğrulama",
+    icon: "shield",
+    color: "#3ECF8E",
+    route: "/mesh-consensus",
+  },
+  {
+    id: "space-weather-integration",
+    title: "Uzay Havası & Mesh",
+    desc: "NASA verileri ile karşılaştır",
+    icon: "sun",
+    color: "#FFA500",
+    route: "/space-weather-integration",
   },
 ] as const;
 
