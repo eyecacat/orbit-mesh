@@ -1,5 +1,5 @@
 // app/(tabs)/index.tsx
-// Ana sayfa — PQC (Kuantum Güvenlik) kartı eklendi.
+// Ana sayfa — Mesh ağı durumu, bağlı cihaz sayısı ve anomali özeti.
 
 import { Feather } from "@expo/vector-icons";
 import { LinearGradient } from "expo-linear-gradient";
@@ -15,14 +15,12 @@ import {
   View,
 } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
-
 import { useAuth } from "@/context/AuthContext";
 import { useSafety } from "@/context/SafetyContext";
 import { useColors } from "@/hooks/useColors";
 import { BACKEND_URL } from "@/lib/env";
 import { useBle } from "@/context/BleContext";
 
-// ---- Arayüzler ----
 interface SolarFlare { flrID: string; beginTime: string; classType: string; sourceLocation?: string; note?: string; }
 interface CME { activityID: string; startTime: string; note?: string; }
 
@@ -53,7 +51,6 @@ type DailyTask = {
   icon: keyof typeof Feather.glyphMap;
 };
 
-// ---- Sabit Veriler ----
 const FEATURE_TILES: FeatureTile[] = [
   {
     id: "atlas",
@@ -91,6 +88,7 @@ const MODULE_TILES: ModuleTile[] = [
   { id: "deneyler", title: "Deneyler", subtitle: "MEB uyumlu deneyler", icon: "activity", color: "#22C55E", route: "/deneyler" },
   { id: "ekosistem", title: "Yerli Ekosistem", subtitle: "TUA, TÜBİTAK, Türksat", icon: "flag", color: "#E11D48", route: "/ekosistem" },
   { id: "ay", title: "Ay Takvimi", subtitle: "Evreler ve gözlem", icon: "moon", color: "#A5B4FC", route: "/ay" },
+  { id: "mesh", title: "Mesh Ağı", subtitle: "Çoklu düğüm yönetimi", icon: "server", color: "#3ECF8E", route: "/mesh" },
 ];
 
 const DAILY_TASKS: DailyTask[] = [
@@ -107,13 +105,12 @@ const ASTRO_NOTES = [
   "Güneş ışığı Dünya'ya yaklaşık 8 dakika 20 saniyede ulaşır.",
 ];
 
-// ---- Ana Bileşen ----
 export default function HomeScreen() {
   const colors = useColors();
   const insets = useSafeAreaInsets();
   const { user } = useAuth();
   const { myStatus, streak, lastCheckin } = useSafety();
-  const { latestTelemetry, pqcStatus } = useBle();
+  const { connectedDevices, latestTelemetry, meshNodes, anomalyScore, consensus, pqcStatus } = useBle();
 
   const [flares, setFlares] = useState<SolarFlare[]>([]);
   const [cmes, setCmes] = useState<CME[]>([]);
@@ -178,10 +175,14 @@ export default function HomeScreen() {
     );
   }
 
-  // PQC durumu
   const hasPqc = pqcStatus && (pqcStatus.totalNodes ?? 0) > 0;
   const pqcFailures = pqcStatus?.recentFailures ?? 0;
   const pqcFailureRate = ((pqcStatus?.failureRate ?? 0) * 100).toFixed(0);
+
+  // Mesh durumu
+  const nodeCount = connectedDevices.length;
+  const anomalyNodeCount = meshNodes.filter(n => n.anomalyScore && n.anomalyScore.total >= 50).length;
+  const consensusStatus = consensus.status;
 
   return (
     <View style={[styles.root, { backgroundColor: colors.background }]}>
@@ -210,6 +211,46 @@ export default function HomeScreen() {
           <Text style={[styles.noteText, { color: colors.mutedForeground }]}>{dayNote}</Text>
         </View>
 
+        {/* Mesh Ağı Durumu Widget */}
+        <View style={[styles.meshWidget, { backgroundColor: colors.card, borderColor: colors.primary + "44" }]}>
+          <View style={styles.meshHeader}>
+            <Feather name="server" size={18} color={colors.primary} />
+            <Text style={[styles.meshTitle, { color: colors.foreground }]}>Mesh Ağı</Text>
+            <View style={[styles.meshBadge, { backgroundColor: nodeCount > 0 ? colors.accent + "33" : colors.muted + "33" }]}>
+              <Text style={[styles.meshBadgeText, { color: nodeCount > 0 ? colors.accent : colors.mutedForeground }]}>
+                {nodeCount > 0 ? `${nodeCount} düğüm` : "Bağlantı yok"}
+              </Text>
+            </View>
+          </View>
+          <View style={styles.meshStats}>
+            <View style={styles.meshStat}>
+              <Text style={[styles.meshStatValue, { color: colors.foreground }]}>{nodeCount}</Text>
+              <Text style={[styles.meshStatLabel, { color: colors.mutedForeground }]}>Bağlı</Text>
+            </View>
+            <View style={styles.meshStat}>
+              <Text style={[styles.meshStatValue, { color: anomalyNodeCount > 0 ? colors.danger : colors.accent }]}>
+                {anomalyNodeCount}
+              </Text>
+              <Text style={[styles.meshStatLabel, { color: colors.mutedForeground }]}>Anomalili</Text>
+            </View>
+            <View style={styles.meshStat}>
+              <Text style={[styles.meshStatValue, { color: consensusStatus === "Normal" ? colors.accent : colors.warning }]}>
+                {consensusStatus}
+              </Text>
+              <Text style={[styles.meshStatLabel, { color: colors.mutedForeground }]}>Konsensus</Text>
+            </View>
+          </View>
+          {nodeCount > 0 && (
+            <Pressable
+              style={[styles.meshDetailBtn, { backgroundColor: colors.primary + "22" }]}
+              onPress={() => router.push("/mesh" as any)}
+            >
+              <Text style={[styles.meshDetailText, { color: colors.primary }]}>Düğümleri görüntüle</Text>
+              <Feather name="chevron-right" size={14} color={colors.primary} />
+            </Pressable>
+          )}
+        </View>
+
         {/* Günün Gözlem Önerisi */}
         <View style={[styles.obsAdviceCard, { backgroundColor: colors.card, borderColor: colors.primary + "44" }]}>
           <View style={styles.obsAdviceHeader}>
@@ -221,12 +262,12 @@ export default function HomeScreen() {
               const state = latestTelemetry?.state || "QUIET";
               const sq = latestTelemetry?.sq || 0;
               if (state === "EXTREME" || state === "DISTURBED")
-                return "⚡ İyonosfer kararsız — Teleskopla derin gözlem yerine uzay havası izleyin (HELIO).";
+                return "İyonosfer kararsız — Teleskopla derin gözlem yerine uzay havası izleyin (HELIO).";
               if (state === "ACTIVE" || sq > 40)
-                return "🌌 Uygun koşullar — Bugün Ay ve gezegen gözlemi ideal (Atlas).";
+                return "Uygun koşullar — Bugün Ay ve gezegen gözlemi ideal (Atlas).";
               if (state === "WATCH")
-                return "🪐 Sakin gökyüzü — Yıldız kümeleri ve galaksiler için uygun (Missions).";
-              return "🔭 Gözlem için uygun — ISS geçişini kaçırma! (ISS).";
+                return "Sakin gökyüzü — Yıldız kümeleri ve galaksiler için uygun (Missions).";
+              return "Gözlem için uygun — ISS geçişini kaçırma! (ISS).";
             })()}
           </Text>
           <Pressable style={[styles.obsAdviceBtn, { backgroundColor: colors.primary + "22" }]} onPress={() => router.push("/gokyuzu-kocu" as any)}>
@@ -264,8 +305,6 @@ export default function HomeScreen() {
         >
           <LinearGradient
             colors={[colors.primary + "22", "transparent"]}
-            start={{ x: 0, y: 0 }}
-            end={{ x: 1, y: 1 }}
             style={StyleSheet.absoluteFill}
           />
           <View style={styles.listenRow}>
@@ -315,8 +354,6 @@ export default function HomeScreen() {
         >
           <LinearGradient
             colors={[colors.primary + "18", "transparent"]}
-            start={{ x: 0, y: 0 }}
-            end={{ x: 1, y: 1 }}
             style={StyleSheet.absoluteFill}
           />
           <View style={styles.aiRow}>
@@ -414,7 +451,7 @@ export default function HomeScreen() {
           )}
         </View>
 
-        {/* 🔐 PQC (Kuantum Güvenlik) Kartı — YENİ EKLENDİ */}
+        {/* PQC Güvenlik Kartı */}
         {hasPqc && (
           <View style={[styles.pqcCard, { backgroundColor: colors.card, borderColor: colors.primary + "44" }]}>
             <View style={styles.pqcHeader}>
@@ -546,7 +583,6 @@ export default function HomeScreen() {
   );
 }
 
-// ---- Stiller ----
 const styles = StyleSheet.create({
   root: { flex: 1 },
   header: {
@@ -577,6 +613,36 @@ const styles = StyleSheet.create({
   noteRow: { flexDirection: "row", alignItems: "center", gap: 8, marginBottom: 8 },
   noteTitle: { fontSize: 14, fontFamily: "Inter_700Bold" },
   noteText: { fontSize: 13, lineHeight: 19, fontFamily: "Inter_400Regular" },
+  meshWidget: {
+    marginHorizontal: 20,
+    borderRadius: 16,
+    borderWidth: 1,
+    padding: 16,
+    marginBottom: 16,
+  },
+  meshHeader: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 8,
+    marginBottom: 10,
+  },
+  meshTitle: { fontSize: 15, fontFamily: "Inter_700Bold", flex: 1 },
+  meshBadge: { paddingHorizontal: 10, paddingVertical: 4, borderRadius: 12 },
+  meshBadgeText: { fontSize: 11, fontFamily: "Inter_600SemiBold" },
+  meshStats: { flexDirection: "row", justifyContent: "space-around", marginBottom: 10 },
+  meshStat: { alignItems: "center" },
+  meshStatValue: { fontSize: 22, fontFamily: "Inter_700Bold" },
+  meshStatLabel: { fontSize: 10, fontFamily: "Inter_500Medium", marginTop: 2 },
+  meshDetailBtn: {
+    flexDirection: "row",
+    alignItems: "center",
+    alignSelf: "flex-start",
+    gap: 4,
+    paddingHorizontal: 12,
+    paddingVertical: 6,
+    borderRadius: 999,
+  },
+  meshDetailText: { fontSize: 12, fontFamily: "Inter_600SemiBold" },
   obsAdviceCard: {
     marginHorizontal: 20,
     borderRadius: 16,
