@@ -1,6 +1,6 @@
 // app/mesh/index.tsx
-// ORBIT-MESH PRO V2.1 ULTRA FIRMWARE İLE TAM UYUMLU
-// Tüm IMU alanları kaldırıldı, yeni alanlar gösteriliyor.
+// ORBIT-MESH PRO V2.1 — Mesh Ağı Yönetim Paneli
+// Tüm bağlı düğümler listelenir, her düğüm için detaylar gösterilir.
 
 import { Feather } from "@expo/vector-icons";
 import { router } from "expo-router";
@@ -16,7 +16,7 @@ export default function MeshScreen() {
   const colors = useColors();
   const insets = useSafeAreaInsets();
   const topPad = Platform.OS === "web" ? 67 : insets.top;
-  const { meshNodes, anomalyScore, consensus, latestTelemetry } = useBle();
+  const { meshNodes, connectedDevices, anomalyScore, consensus, latestTelemetry } = useBle();
 
   const consensusColor =
     consensus.status === "Doğrulanmış" ? colors.danger :
@@ -30,7 +30,7 @@ export default function MeshScreen() {
         <Pressable onPress={() => router.back()} style={({ pressed }) => ({ opacity: pressed ? 0.6 : 1 })}>
           <Feather name="arrow-left" size={24} color={colors.foreground} />
         </Pressable>
-        <Text style={[styles.headerTitle, { color: colors.foreground }]}>Mesh Analytics</Text>
+        <Text style={[styles.headerTitle, { color: colors.foreground }]}>Mesh Ağı</Text>
         <View style={{ width: 24 }} />
       </View>
 
@@ -48,7 +48,7 @@ export default function MeshScreen() {
           </View>
         </View>
 
-        {/* Global Score */}
+        {/* Global Anomali Skoru */}
         {anomalyScore && (
           <View style={[styles.scoreCard, { backgroundColor: colors.card, borderColor: colors.border }]}>
             <Text style={[styles.scoreTitle, { color: colors.foreground }]}>Anomali Skoru</Text>
@@ -70,10 +70,10 @@ export default function MeshScreen() {
           </View>
         )}
 
-        {/* Latest Telemetry - Firmware uyumlu alanlar */}
+        {/* Son Telemetri (ana düğüm) */}
         {tele && (
           <View style={[styles.latestCard, { backgroundColor: colors.card, borderColor: colors.border }]}>
-            <Text style={[styles.sectionTitle, { color: colors.foreground }]}>Son Telemetri</Text>
+            <Text style={[styles.sectionTitle, { color: colors.foreground }]}>Ana Düğüm Son Veri</Text>
             <View style={styles.latestGrid}>
               <View style={styles.latestCell}>
                 <Text style={[styles.latestLabel, { color: colors.mutedForeground }]}>Node</Text>
@@ -130,22 +130,30 @@ export default function MeshScreen() {
         )}
 
         {/* Node Listesi */}
-        <Text style={[styles.sectionTitle, { color: colors.foreground }]}>Node Listesi ({meshNodes.length})</Text>
+        <Text style={[styles.sectionTitle, { color: colors.foreground }]}>
+          Ağdaki Düğümler ({meshNodes.length})
+        </Text>
+
         {meshNodes.length === 0 ? (
           <View style={[styles.emptyCard, { backgroundColor: colors.card, borderColor: colors.border }]}>
             <Feather name="server" size={32} color={colors.mutedForeground} />
-            <Text style={[styles.emptyText, { color: colors.mutedForeground }]}>Henüz node kaydedilmedi</Text>
+            <Text style={[styles.emptyText, { color: colors.mutedForeground }]}>Henüz düğüm kaydedilmedi</Text>
+            <Text style={[styles.emptySub, { color: colors.mutedForeground }]}>BLE'den en az bir Deneyap Kart bağlayın.</Text>
           </View>
         ) : (
           meshNodes.map(node => {
             const score = node.anomalyScore;
             const scoreColor = score ? (score.total >= 70 ? colors.danger : score.total >= 50 ? colors.warning : colors.accent) : colors.mutedForeground;
             const t = node.telemetry;
+            const isConnected = node.isConnected;
+            const rssi = node.rssi;
+            const signalStrength = rssi !== null ? (rssi > -60 ? "Güçlü" : rssi > -80 ? "Orta" : "Zayıf") : "?";
+
             return (
               <View key={node.id} style={[styles.nodeCard, { backgroundColor: colors.card, borderColor: node.health === "Kritik" ? colors.danger + "44" : node.health === "Yüksek" ? colors.warning + "44" : colors.border }]}>
                 <View style={styles.nodeTop}>
                   <View style={{ flexDirection: "row", alignItems: "center", gap: 8 }}>
-                    <View style={[styles.nodeDot, { backgroundColor: node.isConnected ? colors.accent : colors.mutedForeground }]} />
+                    <View style={[styles.nodeDot, { backgroundColor: isConnected ? colors.accent : colors.mutedForeground }]} />
                     <Text style={[styles.nodeName, { color: colors.foreground }]}>{node.name ?? node.id}</Text>
                   </View>
                   <View style={[styles.healthBadge, { backgroundColor: scoreColor + "22" }]}>
@@ -153,9 +161,14 @@ export default function MeshScreen() {
                   </View>
                 </View>
                 <Text style={[styles.nodeId, { color: colors.mutedForeground }]}>{node.id}</Text>
-                <Text style={[styles.nodeMeta, { color: colors.mutedForeground }]}>
-                  Son görülme: {new Date(node.lastSeen).toLocaleTimeString("tr-TR")}
-                </Text>
+                <View style={styles.nodeMetaRow}>
+                  <Text style={[styles.nodeMeta, { color: colors.mutedForeground }]}>
+                    Son görülme: {new Date(node.lastSeen).toLocaleTimeString("tr-TR")}
+                  </Text>
+                  <Text style={[styles.nodeRssi, { color: rssi !== null ? (rssi > -60 ? colors.accent : rssi > -80 ? colors.warning : colors.danger) : colors.mutedForeground }]}>
+                    {rssi !== null ? `${rssi} dBm (${signalStrength})` : "Sinyal yok"}
+                  </Text>
+                </View>
                 {score && (
                   <Text style={[styles.nodeScore, { color: scoreColor }]}>
                     Skor: {Math.round(score.total)} | VLF {score.vlfScore.toFixed(0)} | Schumann {score.schumannScore.toFixed(0)} | Hareket {score.motionScore.toFixed(0)} | Gürültü {score.noiseScore.toFixed(0)}
@@ -165,6 +178,12 @@ export default function MeshScreen() {
                   <Text style={[styles.nodeDetail, { color: colors.mutedForeground }]}>
                     VLF {t.vlf_hz.toFixed(2)}Hz · Sch {t.sch_hz.toFixed(2)}Hz · Hız {t.mot_vel.toFixed(2)} km/s
                   </Text>
+                )}
+                {!isConnected && (
+                  <View style={[styles.offlineBadge, { backgroundColor: colors.danger + "22", borderColor: colors.danger + "44" }]}>
+                    <Feather name="alert-circle" size={12} color={colors.danger} />
+                    <Text style={[styles.offlineText, { color: colors.danger }]}>Bağlantı Kesik</Text>
+                  </View>
                 )}
               </View>
             );
@@ -195,16 +214,21 @@ const styles = StyleSheet.create({
   latestCell: { width: "30%", gap: 2 },
   latestLabel: { fontSize: 10, fontFamily: "Inter_500Medium" },
   latestValue: { fontSize: 14, fontFamily: "Inter_700Bold" },
-  emptyCard: { borderRadius: 16, borderWidth: 1, padding: 32, alignItems: "center", gap: 12 },
+  emptyCard: { borderRadius: 16, borderWidth: 1, padding: 32, alignItems: "center", gap: 8 },
   emptyText: { fontSize: 14, fontFamily: "Inter_400Regular" },
+  emptySub: { fontSize: 12, fontFamily: "Inter_400Regular", color: "gray" },
   nodeCard: { borderRadius: 14, borderWidth: 1, padding: 14, marginBottom: 10, gap: 6 },
   nodeTop: { flexDirection: "row", alignItems: "center", justifyContent: "space-between" },
   nodeDot: { width: 8, height: 8, borderRadius: 4 },
   nodeName: { fontSize: 15, fontFamily: "Inter_600SemiBold" },
   nodeId: { fontSize: 11, fontFamily: "Inter_400Regular" },
+  nodeMetaRow: { flexDirection: "row", justifyContent: "space-between", alignItems: "center" },
   nodeMeta: { fontSize: 11, fontFamily: "Inter_400Regular" },
+  nodeRssi: { fontSize: 11, fontFamily: "Inter_500Medium" },
   healthBadge: { paddingHorizontal: 8, paddingVertical: 2, borderRadius: 6 },
   healthText: { fontSize: 11, fontFamily: "Inter_700Bold" },
   nodeScore: { fontSize: 12, fontFamily: "Inter_500Medium" },
   nodeDetail: { fontSize: 11, fontFamily: "Inter_400Regular" },
+  offlineBadge: { flexDirection: "row", alignItems: "center", gap: 6, borderWidth: 1, borderRadius: 8, paddingHorizontal: 8, paddingVertical: 4, alignSelf: "flex-start" },
+  offlineText: { fontSize: 11, fontFamily: "Inter_600SemiBold" },
 });
