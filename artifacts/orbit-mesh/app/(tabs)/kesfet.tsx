@@ -1,5 +1,5 @@
 // app/(tabs)/kesfet.tsx
-// ŞARTNAME UYUMLU: Uzay Gözlem Teknolojileri kartı eklendi, mevcut kod korundu.
+// Keşfet ekranı — Mesh Ağı ve Simülasyon modülleri eklendi.
 
 import { BACKEND_URL } from "@/lib/env";
 import { Feather } from "@expo/vector-icons";
@@ -16,7 +16,6 @@ import {
   View,
 } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
-
 import { useColors } from "@/hooks/useColors";
 
 interface Notification {
@@ -125,6 +124,22 @@ const MODULES = [
     color: "#00E5B0",
     route: "/liderlik",
   },
+  {
+    id: "mesh",
+    title: "Mesh Ağı",
+    desc: "Çoklu düğüm yönetimi",
+    icon: "server",
+    color: "#3ECF8E",
+    route: "/mesh",
+  },
+  {
+    id: "simulation",
+    title: "Simülasyon",
+    desc: "Gerçek verilerle uzay simülasyonu",
+    icon: "radio",
+    color: "#8B7CF6",
+    route: "/simulation",
+  },
 ] as const;
 
 function detectNotificationCode(rawType: string) {
@@ -200,9 +215,8 @@ export default function KesfetScreen() {
         <Text style={[styles.title, { color: colors.foreground }]}>Keşfet</Text>
         <Text style={[styles.subtitle, { color: colors.mutedForeground }]}>ORBIT-MESH Astronomi Merkezi</Text>
 
-        {/* Hero */}
         <Pressable style={({ pressed }) => [styles.heroCard, { opacity: pressed ? 0.9 : 1 }]} onPress={() => router.push("/atlas" as any)}>
-          <LinearGradient colors={["#1D4ED8", "#7C3AED", "#0F172A"]} start={{ x: 0, y: 0 }} end={{ x: 1, y: 1 }} style={styles.heroGradient}>
+          <LinearGradient colors={["#1D4ED8", "#7C3AED", "#0F172A"]} style={styles.heroGradient}>
             <View style={styles.heroTopRow}>
               <View style={styles.heroBadge}><Feather name="star" size={14} color="white" /><Text style={styles.heroBadgeText}>Astronomi Merkezi</Text></View>
               <View style={[styles.statusBadge, { backgroundColor: "rgba(255,255,255,0.12)" }]}>
@@ -221,7 +235,6 @@ export default function KesfetScreen() {
           </LinearGradient>
         </Pressable>
 
-        {/* 🛰️ Uzay Gözlem Teknolojileri — Şartname Uyumu */}
         <View style={[styles.observationCard, { backgroundColor: colors.card, borderColor: colors.primary + "44" }]}>
           <LinearGradient colors={[colors.primary + "18", "transparent"]} style={StyleSheet.absoluteFill} />
           <View style={styles.obsHeader}>
@@ -251,7 +264,6 @@ export default function KesfetScreen() {
           </View>
         </View>
 
-        {/* Uzay Hava Durumu Özeti */}
         <View style={[styles.spaceNewsCard, { backgroundColor: colors.card, borderColor: colors.border }]}>
           <View style={styles.spaceNewsHeader}><Feather name="radio" size={16} color={colors.primary} /><Text style={[styles.spaceNewsTitle, { color: colors.primary }]}>Uzay Hava Durumu Özeti</Text></View>
           {loadingNotifs ? <ActivityIndicator color={colors.primary} style={{ marginVertical: 12 }} /> :
