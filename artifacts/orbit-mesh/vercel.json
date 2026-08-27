@@ -1,5 +1,9 @@
 {
+  "buildCommand": "npx expo export:web",
   "outputDirectory": "dist",
-  "installCommand": "echo skip",
-  "buildCommand": "echo skip"
+  "installCommand": "pnpm install",
+  "framework": null,
+  "rewrites": [
+    { "source": "/(.*)", "destination": "/index.html" }
+  ]
 }
