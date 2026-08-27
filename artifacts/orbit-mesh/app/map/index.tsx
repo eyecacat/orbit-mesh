@@ -1,9 +1,9 @@
 // app/map/index.tsx
-// ORBIT-MESH PRO V2.1 — Gözlem İstasyonu Haritası (Simüle)
+// ORBIT-MESH PRO — OpenStreetMap TileOverlay ile ücretsiz harita (API anahtarı gerekmez)
 
 import { Feather } from "@expo/vector-icons";
 import { router } from "expo-router";
-import React, { useMemo } from "react";
+import React, { useEffect, useState } from "react";
 import {
   Platform,
   Pressable,
@@ -11,11 +11,17 @@ import {
   StyleSheet,
   Text,
   View,
+  ActivityIndicator,
+  Dimensions,
 } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
+import MapView, { Marker, TileOverlay, PROVIDER_GOOGLE } from "react-native-maps";
+import * as Location from "expo-location";
 
 import { useBle } from "@/context/BleContext";
 import { useColors } from "@/hooks/useColors";
+
+const { width } = Dimensions.get("window");
 
 export default function MapScreen() {
   const colors = useColors();
@@ -23,187 +29,168 @@ export default function MapScreen() {
   const topPad = Platform.OS === "web" ? 67 : insets.top;
   const { connectedDevices, meshNodes } = useBle();
 
-  // Düğümleri rastgele grid pozisyonlarına yerleştir (sinyal gücüne göre yaklaşık mesafe)
-  const nodesWithPosition = useMemo(() => {
-    return connectedDevices.map((device, index) => {
-      const node = meshNodes.find((n) => n.id === device.id);
-      // Rastgele pozisyon (0-100 arası), ama aynı cihaz için sabit kalsın diye hash kullan
-      const hash = device.id.split("").reduce((acc, ch) => acc + ch.charCodeAt(0), 0);
-      const x = (hash % 80) + 10;
-      const y = ((hash * 7) % 80) + 10;
-      const score = node?.anomalyScore?.total || 0;
-      const color =
-        score >= 70 ? colors.danger : score >= 50 ? colors.warning : colors.accent;
-      return {
-        ...device,
-        x,
-        y,
-        color,
-        score,
-        node,
-      };
-    });
-  }, [connectedDevices, meshNodes]);
+  const [location, setLocation] = useState<Location.LocationObject | null>(null);
+  const [locationError, setLocationError] = useState<string | null>(null);
+  const [loadingLocation, setLoadingLocation] = useState(true);
+
+  // Konum izni ve konum al
+  useEffect(() => {
+    (async () => {
+      try {
+        const { status } = await Location.requestForegroundPermissionsAsync();
+        if (status !== "granted") {
+          setLocationError("Konum izni verilmedi.");
+          setLoadingLocation(false);
+          return;
+        }
+        const loc = await Location.getCurrentPositionAsync({
+          accuracy: Location.Accuracy.Balanced,
+        });
+        setLocation(loc);
+      } catch (err: any) {
+        setLocationError(err.message || "Konum alınamadı");
+      } finally {
+        setLoadingLocation(false);
+      }
+    })();
+  }, []);
+
+  const getMarkerColor = (node: any) => {
+    const score = node?.anomalyScore?.total || 0;
+    if (score >= 70) return "#e8434f";
+    if (score >= 50) return "#ffd166";
+    return "#3ecf8e";
+  };
+
+  // Düğümleri marker pozisyonlarına dönüştür
+  const markers = connectedDevices.map((device) => {
+    const node = meshNodes.find((n) => n.id === device.id);
+    const hash = device.id.split("").reduce((acc, ch) => acc + ch.charCodeAt(0), 0);
+    const baseLat = location?.coords.latitude ?? 41.0082;
+    const baseLng = location?.coords.longitude ?? 28.9784;
+    const latOffset = ((hash % 100) - 50) / 10000;
+    const lngOffset = ((hash * 7) % 100 - 50) / 10000;
+    return {
+      id: device.id,
+      name: device.name || device.id,
+      rssi: device.rssi,
+      latitude: baseLat + latOffset,
+      longitude: baseLng + lngOffset,
+      color: getMarkerColor(node),
+      score: node?.anomalyScore?.total || 0,
+      node,
+    };
+  });
+
+  // OSM tile URL'si
+  const tileUrlTemplate = "https://tile.openstreetmap.org/{z}/{x}/{y}.png";
 
   return (
     <View style={[styles.root, { backgroundColor: colors.background }]}>
-      <View
-        style={[
-          styles.header,
-          { paddingTop: topPad + 8, borderBottomColor: colors.border },
-        ]}
-      >
-        <Pressable
-          onPress={() => router.back()}
-          style={({ pressed }) => ({ opacity: pressed ? 0.6 : 1 })}
-        >
+      <View style={[styles.header, { paddingTop: topPad + 8, borderBottomColor: colors.border }]}>
+        <Pressable onPress={() => router.back()} style={({ pressed }) => ({ opacity: pressed ? 0.6 : 1 })}>
           <Feather name="arrow-left" size={24} color={colors.foreground} />
         </Pressable>
-        <Text style={[styles.headerTitle, { color: colors.foreground }]}>
-          Gözlem İstasyonları
-        </Text>
+        <Text style={[styles.headerTitle, { color: colors.foreground }]}>Gözlem Haritası</Text>
         <View style={{ width: 24 }} />
       </View>
 
-      <ScrollView
-        contentContainerStyle={{ padding: 20, paddingBottom: 100 }}
-        showsVerticalScrollIndicator={false}
-      >
-        <View
-          style={[
-            styles.mapContainer,
-            { backgroundColor: colors.card, borderColor: colors.border },
-          ]}
-        >
-          <Text style={[styles.mapTitle, { color: colors.foreground }]}>
-            Aktif Düğümler (Sinyal Gücüne Göre Yaklaşık Konum)
-          </Text>
-          <View style={styles.grid}>
-            {/* Grid çizgileri */}
-            {[0, 25, 50, 75, 100].map((pos) => (
-              <View
-                key={`h-${pos}`}
-                style={[
-                  styles.gridLineH,
-                  { top: `${pos}%`, backgroundColor: colors.border },
-                ]}
-              />
-            ))}
-            {[0, 25, 50, 75, 100].map((pos) => (
-              <View
-                key={`v-${pos}`}
-                style={[
-                  styles.gridLineV,
-                  { left: `${pos}%`, backgroundColor: colors.border },
-                ]}
-              />
-            ))}
-
-            {/* Düğüm noktaları */}
-            {nodesWithPosition.map((node) => (
-              <View
-                key={node.id}
-                style={[
-                  styles.nodePoint,
-                  {
-                    left: `${node.x}%`,
-                    top: `${node.y}%`,
-                    backgroundColor: node.color,
-                    borderColor: node.color,
-                  },
-                ]}
-              >
-                <View style={[styles.nodeDot, { backgroundColor: node.color }]} />
-                <Text style={[styles.nodeLabel, { color: colors.foreground }]}>
-                  {node.name || node.id.slice(0, 6)}
-                </Text>
-                <View
-                  style={[
-                    styles.signalRing,
-                    {
-                      borderColor: node.color,
-                      width: 20 + (node.rssi ? Math.abs(node.rssi) / 5 : 10),
-                      height: 20 + (node.rssi ? Math.abs(node.rssi) / 5 : 10),
-                    },
-                  ]}
-                />
-              </View>
-            ))}
+      <ScrollView contentContainerStyle={{ padding: 16, paddingBottom: 100 }} showsVerticalScrollIndicator={false}>
+        {loadingLocation ? (
+          <View style={[styles.loadingContainer, { backgroundColor: colors.card }]}>
+            <ActivityIndicator color={colors.primary} size="large" />
+            <Text style={[styles.loadingText, { color: colors.mutedForeground }]}>Konum alınıyor...</Text>
           </View>
-
-          <View style={styles.legend}>
-            <View style={styles.legendRow}>
-              <View style={[styles.legendDot, { backgroundColor: colors.accent }]} />
-              <Text style={[styles.legendText, { color: colors.mutedForeground }]}>
-                Normal (Anomali &lt; 50)
-              </Text>
-            </View>
-            <View style={styles.legendRow}>
-              <View style={[styles.legendDot, { backgroundColor: colors.warning }]} />
-              <Text style={[styles.legendText, { color: colors.mutedForeground }]}>
-                Şüpheli (Anomali 50-70)
-              </Text>
-            </View>
-            <View style={styles.legendRow}>
-              <View style={[styles.legendDot, { backgroundColor: colors.danger }]} />
-              <Text style={[styles.legendText, { color: colors.mutedForeground }]}>
-                Kritik (Anomali &gt; 70)
-              </Text>
-            </View>
-          </View>
-
-          <Text style={[styles.mapNote, { color: colors.mutedForeground }]}>
-            Konumlar, BLE sinyal gücüne göre tahmin edilmiştir. Gerçek koordinatlar manuel olarak eklenebilir.
-          </Text>
-        </View>
-
-        {/* Düğüm Listesi (Harita altı) */}
-        <Text style={[styles.sectionTitle, { color: colors.foreground, marginTop: 16 }]}>
-          Bağlı Düğümler ({connectedDevices.length})
-        </Text>
-        {connectedDevices.length === 0 ? (
-          <View
-            style={[
-              styles.emptyCard,
-              { backgroundColor: colors.card, borderColor: colors.border },
-            ]}
-          >
-            <Feather name="bluetooth" size={32} color={colors.mutedForeground} />
-            <Text style={[styles.emptyText, { color: colors.mutedForeground }]}>
-              Henüz bağlı düğüm yok
-            </Text>
+        ) : locationError ? (
+          <View style={[styles.errorContainer, { backgroundColor: colors.card, borderColor: colors.danger + "44" }]}>
+            <Feather name="alert-circle" size={24} color={colors.danger} />
+            <Text style={[styles.errorText, { color: colors.danger }]}>{locationError}</Text>
           </View>
         ) : (
-          connectedDevices.map((device) => {
-            const node = meshNodes.find((n) => n.id === device.id);
-            const score = node?.anomalyScore?.total || 0;
-            const color =
-              score >= 70 ? colors.danger : score >= 50 ? colors.warning : colors.accent;
-            return (
-              <View
-                key={device.id}
-                style={[
-                  styles.deviceCard,
-                  { backgroundColor: colors.card, borderColor: colors.border },
-                ]}
-              >
-                <View style={styles.deviceRow}>
-                  <View style={[styles.deviceDot, { backgroundColor: color }]} />
-                  <View style={{ flex: 1 }}>
-                    <Text style={[styles.deviceName, { color: colors.foreground }]}>
-                      {device.name || device.id}
-                    </Text>
-                    <Text style={[styles.deviceRssi, { color: colors.mutedForeground }]}>
-                      Sinyal: {device.rssi ?? "?"} dBm
-                    </Text>
-                  </View>
-                  <Text style={[styles.deviceScore, { color }]}>
-                    Skor: {Math.round(score)}
+          <View style={[styles.mapContainer, { backgroundColor: colors.card, borderColor: colors.border }]}>
+            <MapView
+              provider={PROVIDER_GOOGLE}
+              style={[styles.map, { width: width - 32, height: 350 }]}
+              initialRegion={{
+                latitude: location?.coords.latitude ?? 41.0082,
+                longitude: location?.coords.longitude ?? 28.9784,
+                latitudeDelta: 0.05,
+                longitudeDelta: 0.05,
+              }}
+              showsUserLocation
+              showsMyLocationButton
+              showsCompass
+            >
+              {/* 🗺️ OpenStreetMap TileOverlay — API anahtarı gerekmez */}
+              <TileOverlay
+                tileUrlTemplate={tileUrlTemplate}
+                maximumZ={19}
+                zIndex={-1}
+              />
+
+              {markers.map((marker) => (
+                <Marker
+                  key={marker.id}
+                  coordinate={{
+                    latitude: marker.latitude,
+                    longitude: marker.longitude,
+                  }}
+                  title={marker.name}
+                  description={`RSSI: ${marker.rssi ?? "?"} dBm · Skor: ${Math.round(marker.score)}`}
+                  pinColor={marker.color}
+                />
+              ))}
+            </MapView>
+
+            {/* Legend */}
+            <View style={[styles.legend, { backgroundColor: colors.background + "dd" }]}>
+              <View style={styles.legendRow}>
+                <View style={[styles.legendDot, { backgroundColor: "#3ecf8e" }]} />
+                <Text style={[styles.legendText, { color: colors.mutedForeground }]}>Normal</Text>
+              </View>
+              <View style={styles.legendRow}>
+                <View style={[styles.legendDot, { backgroundColor: "#ffd166" }]} />
+                <Text style={[styles.legendText, { color: colors.mutedForeground }]}>Şüpheli</Text>
+              </View>
+              <View style={styles.legendRow}>
+                <View style={[styles.legendDot, { backgroundColor: "#e8434f" }]} />
+                <Text style={[styles.legendText, { color: colors.mutedForeground }]}>Kritik</Text>
+              </View>
+            </View>
+
+            <View style={[styles.nodeCount, { backgroundColor: colors.primary + "22", borderColor: colors.primary + "44" }]}>
+              <Feather name="server" size={14} color={colors.primary} />
+              <Text style={[styles.nodeCountText, { color: colors.primary }]}>
+                {markers.length} düğüm gösteriliyor
+              </Text>
+            </View>
+          </View>
+        )}
+
+        {/* Düğüm Listesi */}
+        <Text style={[styles.sectionTitle, { color: colors.foreground, marginTop: 16 }]}>
+          Bağlı Düğümler ({markers.length})
+        </Text>
+        {markers.length === 0 ? (
+          <View style={[styles.emptyCard, { backgroundColor: colors.card, borderColor: colors.border }]}>
+            <Feather name="bluetooth" size={32} color={colors.mutedForeground} />
+            <Text style={[styles.emptyText, { color: colors.mutedForeground }]}>Henüz bağlı düğüm yok</Text>
+          </View>
+        ) : (
+          markers.map((marker) => (
+            <View key={marker.id} style={[styles.deviceCard, { backgroundColor: colors.card, borderColor: colors.border }]}>
+              <View style={styles.deviceRow}>
+                <View style={[styles.deviceDot, { backgroundColor: marker.color }]} />
+                <View style={{ flex: 1 }}>
+                  <Text style={[styles.deviceName, { color: colors.foreground }]}>{marker.name}</Text>
+                  <Text style={[styles.deviceRssi, { color: colors.mutedForeground }]}>
+                    Sinyal: {marker.rssi ?? "?"} dBm · Skor: {Math.round(marker.score)}
                   </Text>
                 </View>
+                <Feather name="map-pin" size={16} color={marker.color} />
               </View>
-            );
-          })
+            </View>
+          ))
         )}
       </ScrollView>
     </View>
@@ -221,68 +208,37 @@ const styles = StyleSheet.create({
     borderBottomWidth: 1,
   },
   headerTitle: { fontSize: 18, fontFamily: "Inter_700Bold" },
+  loadingContainer: {
+    borderRadius: 16,
+    padding: 32,
+    alignItems: "center",
+    gap: 12,
+  },
+  loadingText: { fontSize: 14, fontFamily: "Inter_400Regular" },
+  errorContainer: {
+    borderRadius: 16,
+    borderWidth: 1,
+    padding: 24,
+    alignItems: "center",
+    gap: 8,
+  },
+  errorText: { fontSize: 14, fontFamily: "Inter_500Medium" },
   mapContainer: {
     borderRadius: 16,
     borderWidth: 1,
-    padding: 16,
-    marginBottom: 16,
-  },
-  mapTitle: { fontSize: 15, fontFamily: "Inter_700Bold", marginBottom: 12 },
-  grid: {
-    position: "relative",
-    width: "100%",
-    aspectRatio: 1,
-    backgroundColor: "rgba(255,255,255,0.03)",
-    borderRadius: 12,
     overflow: "hidden",
+    position: "relative",
   },
-  gridLineH: {
-    position: "absolute",
-    left: 0,
-    right: 0,
-    height: 1,
-  },
-  gridLineV: {
-    position: "absolute",
-    top: 0,
-    bottom: 0,
-    width: 1,
-  },
-  nodePoint: {
-    position: "absolute",
-    alignItems: "center",
-    justifyContent: "center",
-    transform: [{ translateX: -12 }, { translateY: -12 }],
-  },
-  nodeDot: {
-    width: 16,
-    height: 16,
-    borderRadius: 8,
-    borderWidth: 2,
-    borderColor: "white",
-    shadowColor: "white",
-    shadowRadius: 8,
-    shadowOpacity: 0.5,
-    elevation: 4,
-  },
-  nodeLabel: {
-    fontSize: 9,
-    fontFamily: "Inter_600SemiBold",
-    marginTop: 4,
-    textAlign: "center",
-  },
-  signalRing: {
-    position: "absolute",
-    borderRadius: 999,
-    borderWidth: 1,
-    opacity: 0.3,
+  map: {
+    borderRadius: 16,
   },
   legend: {
-    flexDirection: "row",
-    flexWrap: "wrap",
-    gap: 16,
-    marginTop: 12,
-    justifyContent: "center",
+    position: "absolute",
+    bottom: 12,
+    left: 12,
+    padding: 10,
+    borderRadius: 10,
+    gap: 4,
   },
   legendRow: {
     flexDirection: "row",
@@ -294,13 +250,20 @@ const styles = StyleSheet.create({
     height: 12,
     borderRadius: 6,
   },
-  legendText: { fontSize: 12, fontFamily: "Inter_400Regular" },
-  mapNote: {
-    fontSize: 11,
-    fontFamily: "Inter_400Regular",
-    textAlign: "center",
-    marginTop: 12,
+  legendText: { fontSize: 11, fontFamily: "Inter_500Medium" },
+  nodeCount: {
+    position: "absolute",
+    top: 12,
+    right: 12,
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 6,
+    paddingHorizontal: 12,
+    paddingVertical: 6,
+    borderRadius: 20,
+    borderWidth: 1,
   },
+  nodeCountText: { fontSize: 12, fontFamily: "Inter_600SemiBold" },
   sectionTitle: { fontSize: 17, fontFamily: "Inter_700Bold", marginBottom: 12 },
   emptyCard: {
     borderRadius: 16,
@@ -328,5 +291,4 @@ const styles = StyleSheet.create({
   },
   deviceName: { fontSize: 14, fontFamily: "Inter_600SemiBold" },
   deviceRssi: { fontSize: 11, fontFamily: "Inter_400Regular", marginTop: 2 },
-  deviceScore: { fontSize: 14, fontFamily: "Inter_700Bold" },
 });
