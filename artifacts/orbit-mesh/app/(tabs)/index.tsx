@@ -73,19 +73,11 @@ const FEATURE_TILES: FeatureTile[] = [
     color: "#F97316",
     route: "/missions",
   },
-  {
-    id: "pqc",
-    title: "Kuantum Sonrası Güvenlik",
-    subtitle: "LWE tabanlı PQC şifreleme katmanı",
-    description: "VLF sinyalinden üretilen entropiyle her paketi imzalayan, kuantum bilgisayarlara dirençli güvenlik sistemini incele.",
-    icon: "shield",
-    color: "#8B5CF6",
-    route: "/pqc",
-  },
 ];
 
 const MODULE_TILES: ModuleTile[] = [
   { id: "helio", title: "HELIO", subtitle: "Güneş Hava Durumu", icon: "sun", color: "#FFA500", route: "/helio" },
+  { id: "pqc", title: "PQC Güvenlik", subtitle: "Kuantum Sonrası Kriptografi", icon: "shield", color: "#8B5CF6", route: "/pqc" },
   { id: "ble", title: "BLE Ağı", subtitle: "Deneyap Kart", icon: "bluetooth", color: "#38C8FF", route: "/ble" },
   { id: "earthsign", title: "EarthSign", subtitle: "Kayıt Sistemi", icon: "shield", color: "#8B5CF6", route: "/earthsign" },
   { id: "uydular", title: "Türk Uyduları", subtitle: "TÜRKSAT / GÖKTÜRK / RASAT", icon: "radio", color: "#FF4560", route: "/uydular" },
