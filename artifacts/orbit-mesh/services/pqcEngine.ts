@@ -1,543 +1,282 @@
-/**
- * ╔══════════════════════════════════════════════════════════════════════════╗
- * ║  ORBIT-MESH · services/pqcEngine.ts                                     ║
- * ║  OmniShield PQC — Post-Kuantum Kriptografi Katmanı                     ║
- * ║                                                                          ║
- * ║  Yerleştirme: artifacts/orbit-mesh/services/pqcEngine.ts               ║
- * ╚══════════════════════════════════════════════════════════════════════════╝
- *
- * MİMARİ KARAR:
- *   BLE üzerinden gelen telemetri JSON'u şu an düz metin.
- *   Bu katman iki şeyi sağlar:
- *     1. PAKET BÜTÜNLÜĞÜ  — LWE tabanlı MAC (mesaj kimlik doğrulama kodu)
- *        Sahte node, replay saldırısı veya manipüle paket tespit edilir.
- *     2. OPSİYONEL ŞİFRELEME — Hassas payload BLE üzerinde şifrelenir.
- *        (Node firmware'i destekliyorsa devreye girer)
- *
- *  NEDEN NATIVE KÜTüPHANE YOK?
- *   react-native-ble-plx zaten native — ikinci bir native modül eklemek
- *   EAS build sürecini karmaşıklaştırır. Bu implementasyon saf TypeScript,
- *   herhangi bir native bağımlılık gerektirmez, Expo Go'da bile çalışır.
- *
- *  NIST REFERANSI:
- *   Gizli vektör s ∈ {-1,0,+1}^n (ternary CBD — FIPS 203 §5.1)
- *   Hata örnekleme: CDT tabanlı ayrık Gaussian (Pöppelmann & Güneysu 2012)
- *   Modül: q=3329 (ML-KEM uyumlu asal)
- */
+// app/pqc.tsx
+// ORBIT-MESH — PQC (Kuantum Sonrası Güvenlik) Detay Ekranı
+//
+// Bu dosya eksikti — ana sayfadaki "/pqc" yönlendirmesi bu dosya olmadan
+// Expo Router'ın "This screen doesn't exist" ekranına düşüyordu.
+// Router App klasöründe route bir dosya karşılığı olmadan var olamaz.
 
-// ── Parametre Seti (ESP32 BLE MTU kısıtına göre ayarlandı) ────────────────
-// BLE MTU = 247 byte → şifreli paket 200 byte'ı geçmemeli
-// n=32: MAC boyutu = 32×2 + 2 = 66 byte → BLE uyumlu ✓
-const N = 32;      // Kafes boyutu
-const M = 64;      // Satır sayısı (2×N)
-const Q = 3329;    // ML-KEM asal modülü
-const SIGMA = 1.2; // Gaussian σ — gürültü bütçesi içinde: σ√N ≈ 7 << Q/4=832
+import { Feather } from "@expo/vector-icons";
+import { LinearGradient } from "expo-linear-gradient";
+import { router, Stack } from "expo-router";
+import React, { useMemo } from "react";
+import {
+  Pressable,
+  ScrollView,
+  StyleSheet,
+  Text,
+  View,
+} from "react-native";
+import { useSafeAreaInsets } from "react-native-safe-area-context";
+import { useColors } from "@/hooks/useColors";
+import { useBle } from "@/context/BleContext";
 
-// ── Tip Tanımları ─────────────────────────────────────────────────────────
+export default function PqcScreen() {
+  const colors = useColors();
+  const insets = useSafeAreaInsets();
+  const { pqcStatus, latestTelemetry } = useBle();
 
-export interface PQCSession {
-  publicKey: { A_seed: Uint8Array; b: Int16Array };
-  privateKey: { s: Int8Array };
-  sessionId: string;
-  createdAt: number;
-  packetCounter: number; // replay koruması
+  const totalNodes = pqcStatus?.totalNodes ?? 0;
+  const activeNodes = pqcStatus?.pqcActiveNodes ?? [];
+  const verifications = pqcStatus?.recentVerifications ?? 0;
+  const failures = pqcStatus?.recentFailures ?? 0;
+  const failureRate = ((pqcStatus?.failureRate ?? 0) * 100).toFixed(0);
+  const isLive = totalNodes > 0;
+
+  const sessionId: string | null = latestTelemetry?.pqcSessionId ?? null;
+
+  const steps = useMemo(
+    () => [
+      {
+        icon: "key" as const,
+        title: "1. Anahtar Üretimi (Keygen)",
+        text: "Her ESP32 düğümü bağlandığında, ternary {-1,0,+1} gizli vektör ve LWE tabanlı bir açık anahtar çifti sıfırdan üretilir. Bu anahtar hiçbir yerde saklanmaz — oturum bitince yok olur.",
+      },
+      {
+        icon: "edit-3" as const,
+        title: "2. Paket İmzalama",
+        text: "VLF anteninden gelen her telemetri paketi, kafes (lattice) tabanlı bir MAC ile imzalanır. Paketin içeriği değiştiği anda imza de değişir; iki paket asla aynı imzayı taşımaz.",
+      },
+      {
+        icon: "shield" as const,
+        title: "3. Doğrulama ve Replay Koruması",
+        text: "Mobil uygulama gelen her paketi sayaç ve imza üzerinden doğrular. Sayaç geriye gitmişse (aynı paketin tekrar gönderilmesi) veya imza tutmuyorsa paket reddedilir.",
+      },
+      {
+        icon: "refresh-cw" as const,
+        title: "4. Oturum Yenileme",
+        text: "Düğüm her yeniden bağlandığında yeni bir anahtar çifti ve oturum kimliği üretilir. Bu yüzden geçmişte doğrulanmış bir paket, gelecekteki bir oturumda hiçbir işe yaramaz.",
+      },
+    ],
+    []
+  );
+
+  return (
+    <View style={[styles.root, { backgroundColor: colors.background }]}>
+      <Stack.Screen options={{ headerShown: false }} />
+      <ScrollView
+        style={{ flex: 1 }}
+        contentContainerStyle={{ paddingTop: insets.top + 16, paddingBottom: 60 }}
+        showsVerticalScrollIndicator={false}
+      >
+        {/* Üst bar */}
+        <View style={styles.topBar}>
+          <Pressable
+            onPress={() => router.back()}
+            style={[styles.backBtn, { backgroundColor: colors.card, borderColor: colors.border }]}
+          >
+            <Feather name="arrow-left" size={18} color={colors.foreground} />
+          </Pressable>
+          <Text style={[styles.topTitle, { color: colors.foreground }]}>PQC Güvenlik</Text>
+          <View style={{ width: 36 }} />
+        </View>
+
+        {/* Hero */}
+        <View style={[styles.hero, { backgroundColor: colors.card, borderColor: colors.primary + "44" }]}>
+          <LinearGradient colors={[colors.primary + "22", "transparent"]} style={StyleSheet.absoluteFill} />
+          <View style={[styles.heroIconWrap, { backgroundColor: colors.primary + "18" }]}>
+            <Feather name="shield" size={30} color={colors.primary} />
+          </View>
+          <Text style={[styles.heroTitle, { color: colors.foreground }]}>Kuantum Sonrası Güvenlik</Text>
+          <Text style={[styles.heroSubtitle, { color: colors.mutedForeground }]}>
+            VLF anteninden gelen her sinyal, kafes tabanlı (LWE) bir kriptografik katmandan geçerek doğrulanır.
+          </Text>
+          <View style={[styles.heroBadge, { backgroundColor: isLive ? colors.accent + "33" : colors.muted + "33" }]}>
+            <View style={[styles.dot, { backgroundColor: isLive ? colors.accent : colors.mutedForeground }]} />
+            <Text style={[styles.heroBadgeText, { color: isLive ? colors.accent : colors.mutedForeground }]}>
+              {isLive ? "Sistem Aktif" : "Bağlantı Bekleniyor"}
+            </Text>
+          </View>
+        </View>
+
+        {/* İstatistik kartları */}
+        <View style={styles.statsRow}>
+          <View style={[styles.statCard, { backgroundColor: colors.card, borderColor: colors.border }]}>
+            <Text style={[styles.statValue, { color: colors.foreground }]}>{activeNodes.length}/{Math.max(totalNodes, activeNodes.length)}</Text>
+            <Text style={[styles.statLabel, { color: colors.mutedForeground }]}>Aktif Düğüm</Text>
+          </View>
+          <View style={[styles.statCard, { backgroundColor: colors.card, borderColor: colors.border }]}>
+            <Text style={[styles.statValue, { color: colors.accent }]}>{verifications}</Text>
+            <Text style={[styles.statLabel, { color: colors.mutedForeground }]}>Doğrulanan Paket</Text>
+          </View>
+          <View style={[styles.statCard, { backgroundColor: colors.card, borderColor: colors.border }]}>
+            <Text style={[styles.statValue, { color: parseFloat(failureRate) > 10 ? colors.danger : colors.accent }]}>
+              {failureRate}%
+            </Text>
+            <Text style={[styles.statLabel, { color: colors.mutedForeground }]}>Hata Oranı</Text>
+          </View>
+        </View>
+
+        {failures > 0 && (
+          <View style={[styles.alertBox, { backgroundColor: colors.danger + "18", borderColor: colors.danger + "44" }]}>
+            <Feather name="alert-triangle" size={16} color={colors.danger} />
+            <Text style={[styles.alertText, { color: colors.danger }]}>
+              Son 60 saniyede {failures} paket imza doğrulamasından geçemedi — bu paketler reddedildi.
+            </Text>
+          </View>
+        )}
+
+        {sessionId && (
+          <View style={[styles.sessionBox, { backgroundColor: colors.card, borderColor: colors.border }]}>
+            <Feather name="hash" size={14} color={colors.mutedForeground} />
+            <Text style={[styles.sessionText, { color: colors.mutedForeground }]} numberOfLines={1}>
+              Oturum kimliği: {sessionId}
+            </Text>
+          </View>
+        )}
+
+        {/* Nasıl çalışır */}
+        <Text style={[styles.sectionTitle, { color: colors.foreground }]}>Nasıl Çalışır?</Text>
+        <View style={{ paddingHorizontal: 20, gap: 12 }}>
+          {steps.map((step, i) => (
+            <View key={i} style={[styles.stepCard, { backgroundColor: colors.card, borderColor: colors.border }]}>
+              <View style={[styles.stepIconWrap, { backgroundColor: colors.primary + "18" }]}>
+                <Feather name={step.icon} size={18} color={colors.primary} />
+              </View>
+              <View style={{ flex: 1 }}>
+                <Text style={[styles.stepTitle, { color: colors.foreground }]}>{step.title}</Text>
+                <Text style={[styles.stepText, { color: colors.mutedForeground }]}>{step.text}</Text>
+              </View>
+            </View>
+          ))}
+        </View>
+
+        {/* Dürüst not */}
+        <View style={[styles.noteBox, { backgroundColor: colors.card, borderColor: colors.border }]}>
+          <View style={styles.noteRow}>
+            <Feather name="info" size={14} color={colors.mutedForeground} />
+            <Text style={[styles.noteTitle, { color: colors.foreground }]}>Kapsam Notu</Text>
+          </View>
+          <Text style={[styles.noteText, { color: colors.mutedForeground }]}>
+            Bu katman, NIST'in kuantum-dirençli standardı FIPS 203'ün temel fikirlerine (kafes problemleri, ternary
+            gizli anahtar, Gaussian hata örnekleme) dayanan bir prototip implementasyonudur. Üretim ortamında
+            kullanılan tam ML-KEM standardının basitleştirilmiş, eğitim amaçlı bir versiyonudur.
+          </Text>
+        </View>
+      </ScrollView>
+    </View>
+  );
 }
 
-export interface PQCPacket {
-  payload: string;        // orijinal JSON (düz metin veya şifreli)
-  mac: number[];          // LWE tabanlı mesaj kimlik doğrulama kodu
-  counter: number;        // monoton artan sayaç (replay önleme)
-  sessionId: string;      // hangi oturumun anahtarıyla imzalandı
-  encrypted: boolean;     // payload şifreli mi?
-}
-
-export interface PQCVerifyResult {
-  valid: boolean;
-  reason?: string;
-  decryptedPayload?: string;
-}
-
-// ── PRNG: xoshiro128** (durum=16 byte, ESP32 uyumlu hafif PRNG) ───────────
-// Matris A üretimi için kullanılır (public bilgi — kriptografik PRNG gerekmez)
-
-class Xoshiro128 {
-  private s: Uint32Array;
-
-  constructor(seed: Uint8Array) {
-    this.s = new Uint32Array(4);
-    // Tohumu 16 byte'a yay
-    const view = new DataView(seed.buffer, seed.byteOffset);
-    for (let i = 0; i < 4; i++) {
-      this.s[i] = view.getUint32(i * 4 % seed.length, true) ^ (0x9e3779b9 * (i + 1));
-    }
-    // Isınma
-    for (let i = 0; i < 16; i++) this.next();
-  }
-
-  next(): number {
-    const result = Math.imul(this._rotl(Math.imul(this.s[1], 5), 7), 9) >>> 0;
-    const t = (this.s[1] << 9) >>> 0;
-    this.s[2] ^= this.s[0];
-    this.s[3] ^= this.s[1];
-    this.s[1] ^= this.s[2];
-    this.s[0] ^= this.s[3];
-    this.s[2] ^= t;
-    this.s[3] = this._rotl(this.s[3], 11);
-    return result;
-  }
-
-  private _rotl(x: number, k: number): number {
-    return ((x << k) | (x >>> (32 - k))) >>> 0;
-  }
-
-  // [0, q) aralığında tamsayı
-  nextMod(q: number): number {
-    return this.next() % q;
-  }
-}
-
-// ── Kriptografik CSPRNG ───────────────────────────────────────────────────
-// React Native'de crypto.getRandomValues mevcuttur (Hermes runtime)
-
-function randomBytes(n: number): Uint8Array {
-  const buf = new Uint8Array(n);
-  if (typeof crypto !== "undefined" && crypto.getRandomValues) {
-    crypto.getRandomValues(buf);
-  } else {
-    // Fallback: Math.random (üretimde olmamalı — uyarı ver)
-    console.warn("[OmniShield] UYARI: crypto.getRandomValues yok, zayıf rastgelelik!");
-    for (let i = 0; i < n; i++) buf[i] = Math.floor(Math.random() * 256);
-  }
-  return buf;
-}
-
-// ── Gaussian Hata Örnekleme (CDT tablosu, σ=1.2) ─────────────────────────
-// Sabit zaman: her zaman tam tablo taranır, erken çıkış yok
-
-const CDT_TABLE = new Uint32Array([
-  // P(|e| ≤ k) × 2^32,  σ=1.2
-  1441151880,  // k=0: ≈ 0.335
-  3522742400,  // k=1: ≈ 0.820
-  4228616192,  // k=2: ≈ 0.984
-  4285526016,  // k=3: ≈ 0.998
-  4294967295,  // k=4: ≈ 1.000
-]);
-
-function sampleError(entropy: number): number {
-  // Sabit zamanlı CDT arama — if/else dallanması yok
-  let magnitude = 0;
-  for (let k = 0; k < CDT_TABLE.length; k++) {
-    // entropy > CDT[k] → magnitude++ (dallanmasız, bit aritmetiği)
-    const exceed = (entropy >>> 0) > CDT_TABLE[k] ? 1 : 0;
-    magnitude += exceed;
-  }
-  // İşaret: entropy'nin en düşük biti
-  const sign = (entropy & 1) ? -1 : 1;
-  return magnitude === 0 ? 0 : sign * magnitude;
-}
-
-// ── Matris Satırı Üretici (tohumdan deterministik) ────────────────────────
-
-function generateRow(seed: Uint8Array, rowIdx: number): Int16Array {
-  // Satır indeksini tohuma karıştır
-  const rowSeed = new Uint8Array(seed.length + 4);
-  rowSeed.set(seed);
-  rowSeed[seed.length]     = rowIdx & 0xff;
-  rowSeed[seed.length + 1] = (rowIdx >> 8) & 0xff;
-  rowSeed[seed.length + 2] = 0xab;
-  rowSeed[seed.length + 3] = 0xcd;
-
-  const prng = new Xoshiro128(rowSeed);
-  const row = new Int16Array(N);
-  for (let j = 0; j < N; j++) {
-    row[j] = prng.nextMod(Q);
-  }
-  return row;
-}
-
-// ── Mod q İşlemi (negatif güvenli) ───────────────────────────────────────
-
-function modQ(x: number): number {
-  return ((x % Q) + Q) % Q;
-}
-
-// ═══════════════════════════════════════════════════════════════════════════
-// ANAHTAR ÜRETİMİ
-// ═══════════════════════════════════════════════════════════════════════════
-
-/**
- * LWE anahtar çifti üretir.
- *
- * Bellek: A matrisi saklanmaz — seed'den her kullanımda yeniden üretilir.
- * Bu ESP32'nin 250 byte MTU kısıtıyla uyumlu minimal anahtar boyutu sağlar.
- *
- * Güvenlik: s ternary {-1,0,+1} — FIPS 203 CBD standardı
- */
-export function pqcKeygen(): PQCSession {
-  const seed = randomBytes(32);
-
-  // Gizli anahtar: ternary {-1, 0, +1}
-  const sRaw = randomBytes(N);
-  const s = new Int8Array(N);
-  for (let i = 0; i < N; i++) {
-    const r3 = sRaw[i] % 3;
-    s[i] = r3 === 2 ? -1 : r3; // 0→0, 1→1, 2→-1
-  }
-
-  // b = A·s + e (mod q) — A satır-satır üretilip hemen atılır
-  const errEntropy = randomBytes(M * 4);
-  const b = new Int16Array(M);
-
-  for (let i = 0; i < M; i++) {
-    const row = generateRow(seed, i);
-
-    // İç çarpım: row · s
-    let dot = 0;
-    for (let j = 0; j < N; j++) {
-      dot += row[j] * s[j];
-    }
-
-    // Hata örnekle
-    const eEnt = (errEntropy[i*4] | (errEntropy[i*4+1] << 8) |
-                  (errEntropy[i*4+2] << 16) | (errEntropy[i*4+3] << 24)) >>> 0;
-    const ei = sampleError(eEnt);
-
-    b[i] = modQ(dot + ei);
-  }
-
-  const sessionId = Array.from(randomBytes(8))
-    .map(b => b.toString(16).padStart(2, "0")).join("");
-
-  return {
-    publicKey: { A_seed: seed, b },
-    privateKey: { s },
-    sessionId,
-    createdAt: Date.now(),
-    packetCounter: 0,
-  };
-}
-
-// ═══════════════════════════════════════════════════════════════════════════
-// PAKET İMZALAMA (LWE-MAC)
-// ═══════════════════════════════════════════════════════════════════════════
-
-/**
- * Telemetri paketini imzalar.
- *
- * MAC Yapısı:
- *   Payload string → UTF-8 bytes → her byte için 1 bit LWE şifreleme
- *   MAC = ilk 8 byte'ın LWE şifrelemesi (64 bit güvenlik, BLE boyut bütçesi)
- *
- * NOT: Tam payload şifrelemesi MTU kısıtı nedeniyle varsayılan olarak kapalı.
- *      Node firmware'i encrypt=true gönderirse devreye girer.
- */
-export function pqcSign(
-  session: PQCSession,
-  payload: string,
-): PQCPacket {
-  session.packetCounter++;
-
-  // Payload hash'i al (imzalanacak "mesaj özeti")
-  const payloadBytes = stringToBytes(payload);
-  const hashBytes = simpleHash(payloadBytes, session.publicKey.A_seed);
-
-  // İlk 8 byte'ı (64 bit) LWE ile şifrele → MAC
-  const mac: number[] = [];
-  const { A_seed, b } = session.publicKey;
-  const encEntropy = randomBytes(8 * M);
-
-  for (let byteIdx = 0; byteIdx < 8; byteIdx++) {
-    const byte = hashBytes[byteIdx] ?? 0;
-    for (let bitPos = 7; bitPos >= 0; bitPos--) {
-      const bit = (byte >> bitPos) & 1;
-      const ct = _encryptBit(A_seed, b, bit, encEntropy.slice(byteIdx * M, (byteIdx + 1) * M));
-      mac.push(ct.v);
-    }
-  }
-
-  return {
-    payload,
-    mac,
-    counter: session.packetCounter,
-    sessionId: session.sessionId,
-    encrypted: false,
-  };
-}
-
-// ═══════════════════════════════════════════════════════════════════════════
-// PAKET DOĞRULAMA
-// ═══════════════════════════════════════════════════════════════════════════
-
-/**
- * Gelen BLE paketinin bütünlüğünü doğrular.
- *
- * Kontroller:
- *   1. Oturum kimliği eşleşmesi
- *   2. Sayaç monotonluğu (replay önleme)
- *   3. LWE-MAC doğrulaması
- *
- * Dönüş: { valid: true } veya { valid: false, reason: "..." }
- */
-export function pqcVerify(
-  session: PQCSession,
-  packet: PQCPacket,
-  lastCounter: number,
-): PQCVerifyResult {
-  // 1. Oturum kimliği
-  if (packet.sessionId !== session.sessionId) {
-    return { valid: false, reason: `Oturum uyuşmazlığı: ${packet.sessionId} ≠ ${session.sessionId}` };
-  }
-
-  // 2. Replay koruması — sayaç geçmişten büyük olmalı
-  if (packet.counter <= lastCounter) {
-    return {
-      valid: false,
-      reason: `Replay saldırısı: sayaç ${packet.counter} ≤ beklenen ${lastCounter + 1}`,
-    };
-  }
-
-  // 3. MAC doğrulama
-  const payloadBytes = stringToBytes(packet.payload);
-  const hashBytes = simpleHash(payloadBytes, session.publicKey.A_seed);
-
-  const { s } = session.privateKey;
-  let macValid = true;
-  let macErrors = 0;
-
-  for (let i = 0; i < Math.min(packet.mac.length, 64); i++) {
-    const byteIdx = Math.floor(i / 8);
-    const bitPos = 7 - (i % 8);
-    const expectedBit = (hashBytes[byteIdx] >> bitPos) & 1;
-
-    // LWE şifre çözme: v - s·u ≈ expectedBit × (Q/2)
-    const v = packet.mac[i];
-    // u bilinmiyor (sadece v gönderildi) — MAC için sadece v değeri kullanılır
-    // Gerçek implementasyonda (u,v) çifti gönderilir; BLE boyut kısıtı için
-    // sadece v doğrulama için yeterli (deterministic u yeniden türetilir)
-    const raw = modQ(v);
-    const d0  = Math.min(raw, Q - raw);
-    const dqh = Math.min(Math.abs(raw - Q/2), Q - Math.abs(raw - Q/2));
-    const decodedBit = dqh < d0 ? 1 : 0;
-
-    if (decodedBit !== expectedBit) macErrors++;
-  }
-
-  // 2 bit'ten fazla hata → manipülasyon
-  if (macErrors > 2) {
-    macValid = false;
-  }
-
-  if (!macValid) {
-    return {
-      valid: false,
-      reason: `MAC doğrulama başarısız: ${macErrors}/64 bit hatalı — paket manipüle edilmiş`,
-    };
-  }
-
-  return {
-    valid: true,
-    decryptedPayload: packet.payload,
-  };
-}
-
-// ═══════════════════════════════════════════════════════════════════════════
-// YARDIMCI FONKSİYONLAR
-// ═══════════════════════════════════════════════════════════════════════════
-
-/** Tek bit LWE şifreleme (iç kullanım) */
-function _encryptBit(
-  seed: Uint8Array,
-  b: Int16Array,
-  bit: number,
-  entropy: Uint8Array,
-): { v: number } {
-  // r ∈ {0,1}^M — entropiden türet
-  const r = new Uint8Array(M);
-  for (let i = 0; i < M; i++) {
-    r[i] = (entropy[i % entropy.length] >> (i % 8)) & 1;
-  }
-
-  // v = bᵀ·r + e₂ + bit·⌊q/2⌋ (mod q)
-  let v = 0;
-  for (let i = 0; i < M; i++) {
-    v += b[i] * r[i];
-  }
-  const e2Ent = (entropy[0] | (entropy[1] << 8) | (entropy[2] << 16) | (entropy[3] << 24)) >>> 0;
-  v += sampleError(e2Ent);
-  v += bit * Math.floor(Q / 2);
-  return { v: modQ(v) };
-}
-
-/** Basit deterministik hash (imzalama için — kriptografik hash üretimde Web Crypto ile değiştirilmeli) */
-function simpleHash(data: Uint8Array, salt: Uint8Array): Uint8Array {
-  const out = new Uint8Array(32);
-  // SipHash-benzeri karıştırma (PoC — üretimde SubtleCrypto.digest kullan)
-  let h0 = 0x736f6d65 ^ (salt[0] | (salt[1] << 8) | (salt[2] << 16) | (salt[3] << 24));
-  let h1 = 0x646f7261 ^ (salt[4] | (salt[5] << 8) | (salt[6] << 16) | (salt[7] << 24));
-  for (let i = 0; i < data.length; i++) {
-    h0 = Math.imul(h0 ^ data[i], 0x9e3779b9) >>> 0;
-    h1 = Math.imul(h1 ^ data[i], 0x517cc1b7) >>> 0;
-    h0 = ((h0 << 13) | (h0 >>> 19)) >>> 0;
-    h1 = ((h1 << 7)  | (h1 >>> 25)) >>> 0;
-    h0 ^= h1;
-  }
-  // 32 byte çıktı üret
-  for (let i = 0; i < 32; i++) {
-    h0 = Math.imul(h0, 0x9e3779b9) >>> 0;
-    h1 = Math.imul(h1, 0x517cc1b7) >>> 0;
-    out[i] = (h0 ^ h1) & 0xff;
-  }
-  return out;
-}
-
-/** String → Uint8Array (UTF-8) */
-function stringToBytes(s: string): Uint8Array {
-  const encoded: number[] = [];
-  for (let i = 0; i < s.length; i++) {
-    const c = s.charCodeAt(i);
-    if (c < 0x80) {
-      encoded.push(c);
-    } else if (c < 0x800) {
-      encoded.push(0xc0 | (c >> 6), 0x80 | (c & 0x3f));
-    } else {
-      encoded.push(0xe0 | (c >> 12), 0x80 | ((c >> 6) & 0x3f), 0x80 | (c & 0x3f));
-    }
-  }
-  return new Uint8Array(encoded);
-}
-
-// ═══════════════════════════════════════════════════════════════════════════
-// OTURUM YÖNETİCİSİ — Node başına anahtar izolasyonu
-// ═══════════════════════════════════════════════════════════════════════════
-
-/**
- * Her ESP32 node'u için ayrı PQC oturumu yönetir.
- * BleContext'e entegre edilmek üzere tasarlandı.
- *
- * Kullanım:
- *   const pqc = new PQCSessionManager();
- *   pqc.initNode("ORBIT-MESH-01");
- *   const result = pqc.verifyPacket("ORBIT-MESH-01", incomingPacket);
- */
-export class PQCSessionManager {
-  private sessions: Map<string, PQCSession> = new Map();
-  private counters: Map<string, number> = new Map();
-  private verifyLog: Array<{
-    nodeId: string;
-    time: number;
-    valid: boolean;
-    reason?: string;
-  }> = [];
-
-  /** Node için yeni PQC oturumu başlat (veya mevcut oturumu yenile) */
-  initNode(nodeId: string): PQCSession {
-    const session = pqcKeygen();
-    this.sessions.set(nodeId, session);
-    this.counters.set(nodeId, 0);
-    return session;
-  }
-
-  /** Node için mevcut oturumu getir (yoksa oluştur) */
-  getOrCreateSession(nodeId: string): PQCSession {
-    if (!this.sessions.has(nodeId)) {
-      return this.initNode(nodeId);
-    }
-    return this.sessions.get(nodeId)!;
-  }
-
-  /**
-   * Gelen BLE telemetri paketini doğrula.
-   * Node'un oturumu yoksa veya firmware PQC desteği belirtmemişse
-   * eski davranışa düşer (backward compatible).
-   */
-  verifyPacket(nodeId: string, packet: PQCPacket): PQCVerifyResult {
-    const session = this.sessions.get(nodeId);
-    if (!session) {
-      // PQC oturumu yok — legacy mod, uyar ama geçir
-      return {
-        valid: true,
-        reason: "PQC oturumu yok — legacy mod aktif",
-        decryptedPayload: packet.payload,
-      };
-    }
-
-    const lastCounter = this.counters.get(nodeId) ?? 0;
-    const result = pqcVerify(session, packet, lastCounter);
-
-    if (result.valid) {
-      this.counters.set(nodeId, packet.counter);
-    }
-
-    // Log tut (son 100 kayıt)
-    this.verifyLog.push({
-      nodeId,
-      time: Date.now(),
-      valid: result.valid,
-      reason: result.reason,
-    });
-    if (this.verifyLog.length > 100) this.verifyLog.shift();
-
-    return result;
-  }
-
-  /**
-   * Ham telemetri JSON string'ini doğrula (BleContext entegrasyonu için)
-   * Paket PQC formatında değilse legacy olarak işler.
-   */
-  verifyRawTelemetry(nodeId: string, rawJson: string): {
-    valid: boolean;
-    payload: string;
-    pqcActive: boolean;
-    reason?: string;
-  } {
-    let parsed: any;
-    try {
-      parsed = JSON.parse(rawJson);
-    } catch {
-      return { valid: false, payload: rawJson, pqcActive: false, reason: "JSON parse hatası" };
-    }
-
-    // PQC paket formatı kontrolü
-    if (parsed.__pqc && parsed.mac && parsed.counter !== undefined) {
-      const packet: PQCPacket = parsed;
-      const result = this.verifyPacket(nodeId, packet);
-      return {
-        valid: result.valid,
-        payload: result.decryptedPayload ?? rawJson,
-        pqcActive: true,
-        reason: result.reason,
-      };
-    }
-
-    // Legacy format — PQC yok, doğrudan geçir
-    return { valid: true, payload: rawJson, pqcActive: false };
-  }
-
-  /** PQC güvenlik durumu (diagnostics ekranı için) */
-  getSecurityStatus(): {
-    totalNodes: number;
-    pqcActiveNodes: string[];
-    recentVerifications: number;
-    recentFailures: number;
-    failureRate: number;
-  } {
-    const recent = this.verifyLog.filter(l => Date.now() - l.time < 60_000);
-    const failures = recent.filter(l => !l.valid);
-    return {
-      totalNodes: this.sessions.size,
-      pqcActiveNodes: Array.from(this.sessions.keys()),
-      recentVerifications: recent.length,
-      recentFailures: failures.length,
-      failureRate: recent.length > 0 ? failures.length / recent.length : 0,
-    };
-  }
-
-  /** Node oturumunu kaldır (disconnect üzerine çağrılır) */
-  removeNode(nodeId: string): void {
-    this.sessions.delete(nodeId);
-    this.counters.delete(nodeId);
-  }
-}
-
-// Singleton — BleContext tarafından import edilir
-export const pqcManager = new PQCSessionManager();
+const styles = StyleSheet.create({
+  root: { flex: 1 },
+  topBar: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "space-between",
+    paddingHorizontal: 20,
+    marginBottom: 12,
+  },
+  backBtn: {
+    width: 36,
+    height: 36,
+    borderRadius: 18,
+    borderWidth: 1,
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  topTitle: { fontSize: 16, fontFamily: "Inter_700Bold" },
+  hero: {
+    marginHorizontal: 20,
+    borderRadius: 20,
+    borderWidth: 1,
+    padding: 20,
+    alignItems: "center",
+    marginBottom: 16,
+    overflow: "hidden",
+  },
+  heroIconWrap: {
+    width: 56,
+    height: 56,
+    borderRadius: 28,
+    alignItems: "center",
+    justifyContent: "center",
+    marginBottom: 12,
+  },
+  heroTitle: { fontSize: 19, fontFamily: "Inter_700Bold", textAlign: "center" },
+  heroSubtitle: {
+    fontSize: 13,
+    lineHeight: 19,
+    fontFamily: "Inter_400Regular",
+    textAlign: "center",
+    marginTop: 6,
+    marginBottom: 12,
+  },
+  heroBadge: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 6,
+    paddingHorizontal: 12,
+    paddingVertical: 6,
+    borderRadius: 999,
+  },
+  dot: { width: 6, height: 6, borderRadius: 3 },
+  heroBadgeText: { fontSize: 11, fontFamily: "Inter_700Bold" },
+  statsRow: { flexDirection: "row", paddingHorizontal: 20, gap: 10, marginBottom: 12 },
+  statCard: { flex: 1, padding: 14, borderRadius: 14, borderWidth: 1, alignItems: "center", gap: 4 },
+  statValue: { fontSize: 18, fontFamily: "Inter_700Bold" },
+  statLabel: { fontSize: 10, fontFamily: "Inter_400Regular", textAlign: "center" },
+  alertBox: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 8,
+    marginHorizontal: 20,
+    padding: 12,
+    borderRadius: 12,
+    borderWidth: 1,
+    marginBottom: 12,
+  },
+  alertText: { flex: 1, fontSize: 12, lineHeight: 17, fontFamily: "Inter_500Medium" },
+  sessionBox: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 8,
+    marginHorizontal: 20,
+    padding: 12,
+    borderRadius: 12,
+    borderWidth: 1,
+    marginBottom: 20,
+  },
+  sessionText: { flex: 1, fontSize: 11, fontFamily: "Inter_400Regular" },
+  sectionTitle: {
+    fontSize: 16,
+    fontFamily: "Inter_700Bold",
+    paddingHorizontal: 20,
+    marginBottom: 12,
+  },
+  stepCard: {
+    flexDirection: "row",
+    gap: 12,
+    padding: 14,
+    borderRadius: 14,
+    borderWidth: 1,
+  },
+  stepIconWrap: {
+    width: 36,
+    height: 36,
+    borderRadius: 18,
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  stepTitle: { fontSize: 13, fontFamily: "Inter_700Bold", marginBottom: 4 },
+  stepText: { fontSize: 12, lineHeight: 18, fontFamily: "Inter_400Regular" },
+  noteBox: {
+    marginHorizontal: 20,
+    marginTop: 20,
+    padding: 14,
+    borderRadius: 14,
+    borderWidth: 1,
+  },
+  noteRow: { flexDirection: "row", alignItems: "center", gap: 6, marginBottom: 6 },
+  noteTitle: { fontSize: 12, fontFamily: "Inter_700Bold" },
+  noteText: { fontSize: 12, lineHeight: 18, fontFamily: "Inter_400Regular" },
+});
