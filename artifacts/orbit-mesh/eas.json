@@ -7,7 +7,10 @@
     "development": {
       "developmentClient": true,
       "distribution": "internal",
-      "node": "22.11.0"
+      "node": "22.11.0",
+      "env": {
+        "EXPO_USE_PNPM": "1"
+      }
     },
     "preview": {
       "android": {
@@ -16,6 +19,7 @@
       "channel": "preview",
       "node": "22.11.0",
       "env": {
+        "EXPO_USE_PNPM": "1",
         "EAS_BUILD_SKIP_LOCKFILE_CHECK": "1"
       }
     },
@@ -24,7 +28,10 @@
         "buildType": "app-bundle"
       },
       "channel": "production",
-      "node": "22.11.0"
+      "node": "22.11.0",
+      "env": {
+        "EXPO_USE_PNPM": "1"
+      }
     }
   },
   "submit": {
