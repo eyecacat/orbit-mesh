@@ -1,5 +1,13 @@
 // app/map/index.tsx
 // ORBIT-MESH PRO — OpenStreetMap TileOverlay ile ücretsiz harita (API anahtarı gerekmez)
+//
+// DÜZELTME (crash fix): PROVIDER_GOOGLE kaldırıldı. Google provider, Android'de
+// app.json içinde bir Google Maps API anahtarı tanımlanmasını ZORUNLU kılar.
+// Bu projede öyle bir anahtar tanımlı değil, bu yüzden konum alınıp harita
+// render edilmeye çalışıldığı an native modül çöküyor ve "ORBIT-MESH ile
+// ilgili bir sorun oluştu" hatası veriyordu. Varsayılan provider (Android'de
+// react-native-maps'in kendi native haritası) + OSM TileOverlay API anahtarı
+// gerektirmez ve dosyanın kendi amacına (ücretsiz harita) da uygundur.
 
 import { Feather } from "@expo/vector-icons";
 import { router } from "expo-router";
@@ -15,13 +23,18 @@ import {
   Dimensions,
 } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
-import MapView, { Marker, TileOverlay, PROVIDER_GOOGLE } from "react-native-maps";
+import MapView, { Marker, TileOverlay } from "react-native-maps";
 import * as Location from "expo-location";
 
 import { useBle } from "@/context/BleContext";
 import { useColors } from "@/hooks/useColors";
 
 const { width } = Dimensions.get("window");
+
+// İstanbul — konum alınamadığında veya izin verilmediğinde kullanılan
+// güvenli varsayılan merkez (haritanın boş/hatalı koordinatla çökmesini önler)
+const FALLBACK_LAT = 41.0082;
+const FALLBACK_LNG = 28.9784;
 
 export default function MapScreen() {
   const colors = useColors();
@@ -32,27 +45,42 @@ export default function MapScreen() {
   const [location, setLocation] = useState<Location.LocationObject | null>(null);
   const [locationError, setLocationError] = useState<string | null>(null);
   const [loadingLocation, setLoadingLocation] = useState(true);
+  // Konum reddedilse/başarısız olsa bile haritayı fallback koordinatla göster —
+  // önceki davranış, hata durumunda haritayı hiç render etmiyordu.
+  const [showMapAnyway, setShowMapAnyway] = useState(false);
 
   // Konum izni ve konum al
   useEffect(() => {
+    let cancelled = false;
+
     (async () => {
       try {
         const { status } = await Location.requestForegroundPermissionsAsync();
         if (status !== "granted") {
-          setLocationError("Konum izni verilmedi.");
-          setLoadingLocation(false);
+          if (!cancelled) {
+            setLocationError("Konum izni verilmedi — harita varsayılan konumla gösteriliyor.");
+            setLoadingLocation(false);
+          }
           return;
         }
         const loc = await Location.getCurrentPositionAsync({
           accuracy: Location.Accuracy.Balanced,
         });
-        setLocation(loc);
+        if (!cancelled) setLocation(loc);
       } catch (err: any) {
-        setLocationError(err.message || "Konum alınamadı");
+        if (!cancelled) {
+          setLocationError(
+            (err?.message || "Konum alınamadı") + " — harita varsayılan konumla gösteriliyor."
+          );
+        }
       } finally {
-        setLoadingLocation(false);
+        if (!cancelled) setLoadingLocation(false);
       }
     })();
+
+    return () => {
+      cancelled = true;
+    };
   }, []);
 
   const getMarkerColor = (node: any) => {
@@ -66,8 +94,8 @@ export default function MapScreen() {
   const markers = connectedDevices.map((device) => {
     const node = meshNodes.find((n) => n.id === device.id);
     const hash = device.id.split("").reduce((acc, ch) => acc + ch.charCodeAt(0), 0);
-    const baseLat = location?.coords.latitude ?? 41.0082;
-    const baseLng = location?.coords.longitude ?? 28.9784;
+    const baseLat = location?.coords.latitude ?? FALLBACK_LAT;
+    const baseLng = location?.coords.longitude ?? FALLBACK_LNG;
     const latOffset = ((hash % 100) - 50) / 10000;
     const lngOffset = ((hash * 7) % 100 - 50) / 10000;
     return {
@@ -85,6 +113,9 @@ export default function MapScreen() {
   // OSM tile URL'si
   const tileUrlTemplate = "https://tile.openstreetmap.org/{z}/{x}/{y}.png";
 
+  const mapCenterLat = location?.coords.latitude ?? FALLBACK_LAT;
+  const mapCenterLng = location?.coords.longitude ?? FALLBACK_LNG;
+
   return (
     <View style={[styles.root, { backgroundColor: colors.background }]}>
       <View style={[styles.header, { paddingTop: topPad + 8, borderBottomColor: colors.border }]}>
@@ -101,24 +132,29 @@ export default function MapScreen() {
             <ActivityIndicator color={colors.primary} size="large" />
             <Text style={[styles.loadingText, { color: colors.mutedForeground }]}>Konum alınıyor...</Text>
           </View>
-        ) : locationError ? (
-          <View style={[styles.errorContainer, { backgroundColor: colors.card, borderColor: colors.danger + "44" }]}>
-            <Feather name="alert-circle" size={24} color={colors.danger} />
-            <Text style={[styles.errorText, { color: colors.danger }]}>{locationError}</Text>
-          </View>
         ) : (
           <View style={[styles.mapContainer, { backgroundColor: colors.card, borderColor: colors.border }]}>
+            {locationError && (
+              <View style={[styles.warnBanner, { backgroundColor: colors.warning + "22", borderColor: colors.warning + "44" }]}>
+                <Feather name="alert-triangle" size={14} color={colors.warning} />
+                <Text style={[styles.warnBannerText, { color: colors.warning }]}>{locationError}</Text>
+              </View>
+            )}
+
+            {/* provider PROP'U KASITLI OLARAK VERİLMEDİ.
+                react-native-maps'te provider verilmezse Android'de native
+                harita (Google Maps API anahtarı istemeden) kullanılır ve
+                aşağıdaki OSM TileOverlay ile birlikte ücretsiz çalışır. */}
             <MapView
-              provider={PROVIDER_GOOGLE}
               style={[styles.map, { width: width - 32, height: 350 }]}
               initialRegion={{
-                latitude: location?.coords.latitude ?? 41.0082,
-                longitude: location?.coords.longitude ?? 28.9784,
+                latitude: mapCenterLat,
+                longitude: mapCenterLng,
                 latitudeDelta: 0.05,
                 longitudeDelta: 0.05,
               }}
-              showsUserLocation
-              showsMyLocationButton
+              showsUserLocation={!locationError}
+              showsMyLocationButton={!locationError}
               showsCompass
             >
               {/* 🗺️ OpenStreetMap TileOverlay — API anahtarı gerekmez */}
@@ -215,14 +251,17 @@ const styles = StyleSheet.create({
     gap: 12,
   },
   loadingText: { fontSize: 14, fontFamily: "Inter_400Regular" },
-  errorContainer: {
-    borderRadius: 16,
-    borderWidth: 1,
-    padding: 24,
+  warnBanner: {
+    flexDirection: "row",
     alignItems: "center",
     gap: 8,
+    padding: 10,
+    borderWidth: 1,
+    borderRadius: 12,
+    margin: 10,
+    marginBottom: 0,
   },
-  errorText: { fontSize: 14, fontFamily: "Inter_500Medium" },
+  warnBannerText: { flex: 1, fontSize: 12, fontFamily: "Inter_500Medium" },
   mapContainer: {
     borderRadius: 16,
     borderWidth: 1,
