@@ -8,7 +8,9 @@
       "developmentClient": true,
       "distribution": "internal",
       "node": "22.11.0",
-      "pnpm": "9.15.0"
+      "pnpm": "9.15.0",
+      "installCommand": "pnpm install",
+      "packageManager": "pnpm"
     },
     "preview": {
       "android": {
@@ -17,6 +19,8 @@
       "channel": "preview",
       "node": "22.11.0",
       "pnpm": "9.15.0",
+      "installCommand": "pnpm install",
+      "packageManager": "pnpm",
       "env": {
         "EAS_BUILD_SKIP_LOCKFILE_CHECK": "1"
       }
@@ -27,7 +31,9 @@
       },
       "channel": "production",
       "node": "22.11.0",
-      "pnpm": "9.15.0"
+      "pnpm": "9.15.0",
+      "installCommand": "pnpm install",
+      "packageManager": "pnpm"
     }
   },
   "submit": {
