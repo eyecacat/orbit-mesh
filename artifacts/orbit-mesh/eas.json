@@ -7,8 +7,7 @@
     "development": {
       "developmentClient": true,
       "distribution": "internal",
-      "node": "22.11.0",
-      "pnpm": "9.15.0"
+      "node": "22.11.0"
     },
     "preview": {
       "android": {
@@ -16,7 +15,6 @@
       },
       "channel": "preview",
       "node": "22.11.0",
-      "pnpm": "9.15.0",
       "env": {
         "EAS_BUILD_SKIP_LOCKFILE_CHECK": "1"
       }
@@ -26,8 +24,7 @@
         "buildType": "app-bundle"
       },
       "channel": "production",
-      "node": "22.11.0",
-      "pnpm": "9.15.0"
+      "node": "22.11.0"
     }
   },
   "submit": {
