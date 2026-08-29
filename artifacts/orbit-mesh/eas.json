@@ -7,9 +7,6 @@
     "development": {
       "developmentClient": true,
       "distribution": "internal",
-      "image": "node:22",
-      "installCommand": "pnpm install --frozen-lockfile",
-      "packageManager": "pnpm",
       "node": "22.11.0"
     },
     "preview": {
@@ -17,9 +14,6 @@
         "buildType": "apk"
       },
       "channel": "preview",
-      "image": "node:22",
-      "installCommand": "pnpm install --frozen-lockfile",
-      "packageManager": "pnpm",
       "node": "22.11.0",
       "env": {
         "EAS_BUILD_SKIP_LOCKFILE_CHECK": "1"
@@ -30,9 +24,6 @@
         "buildType": "app-bundle"
       },
       "channel": "production",
-      "image": "node:22",
-      "installCommand": "pnpm install --frozen-lockfile",
-      "packageManager": "pnpm",
       "node": "22.11.0"
     }
   },
