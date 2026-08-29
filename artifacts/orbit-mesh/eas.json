@@ -9,7 +9,7 @@
       "distribution": "internal",
       "node": "22.11.0",
       "pnpm": "9.15.0",
-      "installCommand": "pnpm install",
+      "installCommand": "pnpm install --frozen-lockfile",
       "packageManager": "pnpm"
     },
     "preview": {
@@ -19,7 +19,7 @@
       "channel": "preview",
       "node": "22.11.0",
       "pnpm": "9.15.0",
-      "installCommand": "pnpm install",
+      "installCommand": "pnpm install --frozen-lockfile",
       "packageManager": "pnpm",
       "env": {
         "EAS_BUILD_SKIP_LOCKFILE_CHECK": "1"
@@ -32,7 +32,7 @@
       "channel": "production",
       "node": "22.11.0",
       "pnpm": "9.15.0",
-      "installCommand": "pnpm install",
+      "installCommand": "pnpm install --frozen-lockfile",
       "packageManager": "pnpm"
     }
   },
