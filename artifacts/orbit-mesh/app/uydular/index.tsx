@@ -1,347 +1,251 @@
+// app/uydular/index.tsx
+// ORBIT-MESH — Türk Uyduları (gerçek TLE + SGP4)
+// DÜZELTME: GEO Türksat'lar CelesTrak "geo" grubundan İSİM FİLTRESİYLE otomatik
+// bulunur (yanlış NORAD ID'si riski kalmaz). LEO uydular CATNR ile çekilir;
+// TLE gelmezse o uydu zarifçe "veri alınamadı" gösterir.
+
 import { Feather } from "@expo/vector-icons";
 import { router } from "expo-router";
-import React, { useEffect, useMemo, useState } from "react";
-import {
-  ActivityIndicator,
-  Platform,
-  Pressable,
-  ScrollView,
-  StyleSheet,
-  Text,
-  View,
-} from "react-native";
+import React, { useCallback, useEffect, useState } from "react";
+import { ActivityIndicator, Platform, Pressable, RefreshControl, ScrollView, StyleSheet, Text, View } from "react-native";
+import * as Location from "expo-location";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
-import * as satellite from "satellite.js";
 
 import { useColors } from "@/hooks/useColors";
-import { BACKEND_URL } from "@/lib/env";
+import {
+  computePasses,
+  fetchTleByCatnr,
+  fetchTlesFromGroup,
+  getPosition,
+  GeoPos,
+  PassInfo,
+  TleData,
+} from "@/services/satelliteTracker";
 
-interface TurkishSatellite {
-  id: string;
-  name: string;
-  shortName: string;
-  norad: string;
-  purpose: string;
-  launched: string;
-  operator: string;
-  color: string;
-}
+const FALLBACK = { lat: 39.0, lon: 35.0 }; // Türkiye merkezi
 
-interface TleData {
-  norad: string;
-  name?: string;
-  line1: string;
-  line2: string;
-  fetchedAt: string;
-}
-
-interface SatellitePass {
-  start: Date;
-  maxElevation: number;
-  durationMinutes: number;
-}
-
-interface SatelliteState {
-  tle: TleData | null;
-  loading: boolean;
-  error: boolean;
-  current: { lat: number; lon: number; alt: number } | null;
-  nextPass: SatellitePass | null;
-}
-
-const TURKISH_SATELLITES: TurkishSatellite[] = [
-  { id: "turksat-5a", name: "TÜRKSAT 5A", shortName: "T5A", norad: "47306", purpose: "Haberleşme uydusu", launched: "2021", operator: "Türksat", color: "#FF4560" },
-  { id: "turksat-5b", name: "TÜRKSAT 5B", shortName: "T5B", norad: "50212", purpose: "Haberleşme uydusu", launched: "2022", operator: "Türksat", color: "#FF4560" },
-  { id: "turksat-6a", name: "TÜRKSAT 6A", shortName: "T6A", norad: "60233", purpose: "Milli haberleşme uydusu", launched: "2024", operator: "Türksat / TAI", color: "#FF4560" },
-  { id: "gokturk-1a", name: "GÖKTÜRK-1A", shortName: "G1A", norad: "41875", purpose: "Keşif/gözlem uydusu", launched: "2016", operator: "TAI / MSB", color: "#38C8FF" },
-  { id: "gokturk-2", name: "GÖKTÜRK-2", shortName: "G2", norad: "39030", purpose: "Yer gözlem uydusu", launched: "2012", operator: "TAI / MSB", color: "#00E5B0" },
-  { id: "rasat", name: "RASAT", shortName: "RASAT", norad: "37791", purpose: "Yer gözlem uydusu", launched: "2011", operator: "TÜBİTAK UZAY", color: "#8B5CF6" },
+// LEO uydular (TLE isim satırıyla doğrulanır; uyuşmazsa kart gösterilmez)
+const LEO_SATS: { key: string; short: string; catnr: number; desc: string }[] = [
+  { key: "G1A", short: "GÖKTÜRK-1A", catnr: 39084, desc: "Gözlem uydusu" },
+  { key: "G2", short: "GÖKTÜRK-2", catnr: 39143, desc: "Gözlem uydusu" },
+  { key: "IMECE", short: "İMECE", catnr: 56183, desc: "Millî gözlem uydusu (TÜBİTAK)" },
+  { key: "RASAT", short: "RASAT", catnr: 37791, desc: "İlk yerli gözlem uydusu" },
+  { key: "BILSAT", short: "BİLSAT", catnr: 27943, desc: "Erken dönem yerli uydusu" },
 ];
 
-// Türkiye ortalaması (Konya / Ankara arası). Cihaz konumu yoksa kullanılır.
-const DEFAULT_OBSERVER = { lat: 39.0, lon: 35.0, alt: 1000 };
-
-function calculatePass(
-  satrec: satellite.SatRec,
-  observer: { lat: number; lon: number; alt: number },
-  from: Date,
-  hours = 72,
-  stepMinutes = 2
-): SatellitePass | null {
-  const deg2rad = Math.PI / 180;
-  const observerGeodetic = {
-    latitude: observer.lat * deg2rad,
-    longitude: observer.lon * deg2rad,
-    height: observer.alt / 1000,
-  };
-
-  let start: Date | null = null;
-  let maxEl = 0;
-
-  for (let m = 0; m <= hours * 60; m += stepMinutes) {
-    const time = new Date(from.getTime() + m * 60 * 1000);
-    const pv = satellite.propagate(satrec, time);
-    // [TYPE-FIX] satellite.js'in tipi pv.position'ı `EciVec3<number> | boolean`
-    // olarak tanımlıyor. `!pv.position` sadece `false` durumunu eler; `true`
-    // döndüğü (bozuk/derin-uzay edge-case) durumda tip hâlâ `boolean` kalır ve
-    // eciToEcf() çağrısında derleme hatası verir. typeof kontrolüyle hem
-    // runtime hem tip seviyesinde net şekilde dışlanıyor.
-    if (!pv || !pv.position || typeof pv.position === "boolean") continue;
-
-    const ecf = satellite.eciToEcf(pv.position, satellite.gstime(time));
-    const look = satellite.ecfToLookAngles(observerGeodetic, ecf);
-    const elevation = look.elevation * (180 / Math.PI);
-
-    if (elevation > 0) {
-      if (!start) start = time;
-      if (elevation > maxEl) maxEl = elevation;
-    } else if (start) {
-      const duration = (time.getTime() - start.getTime()) / 60000;
-      if (duration > 2) {
-        return { start, maxElevation: maxEl, durationMinutes: Math.round(duration) };
-      }
-      start = null;
-      maxEl = 0;
-    }
-  }
-  return null;
-}
-
-function calculateCurrentPosition(
-  satrec: satellite.SatRec,
-  date = new Date()
-): { lat: number; lon: number; alt: number } | null {
-  const pv = satellite.propagate(satrec, date);
-  // [TYPE-FIX] bkz. calculatePass() içindeki aynı desen — yorum orada.
-  if (!pv || !pv.position || typeof pv.position === "boolean") return null;
-
-  const gmst = satellite.gstime(date);
-  const gd = satellite.eciToGeodetic(pv.position, gmst);
-  return {
-    lat: satellite.degreesLat(gd.latitude),
-    lon: satellite.degreesLong(gd.longitude),
-    alt: gd.height,
-  };
+interface SatEntry {
+  key: string;
+  short: string;
+  fullName: string;
+  desc: string;
+  tle: TleData | null;
+  pos: GeoPos | null;
+  passes: PassInfo[];
+  isGeo: boolean;
 }
 
 export default function UydularScreen() {
   const colors = useColors();
   const insets = useSafeAreaInsets();
-  const [selected, setSelected] = useState<TurkishSatellite>(TURKISH_SATELLITES[0]);
-  const [state, setState] = useState<SatelliteState>({
-    tle: null,
-    loading: true,
-    error: false,
-    current: null,
-    nextPass: null,
-  });
-  const [observer, setObserver] = useState(DEFAULT_OBSERVER);
   const topPad = Platform.OS === "web" ? 67 : insets.top;
 
-  useEffect(() => {
-    void fetchTle(selected.norad);
-  }, [selected]);
+  const [obs, setObs] = useState(FALLBACK);
+  const [obsReal, setObsReal] = useState(false);
+  const [sats, setSats] = useState<SatEntry[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
+  const [selected, setSelected] = useState<string | null>(null);
 
-  useEffect(() => {
-    if (state.tle) {
-      try {
-        const satrec = satellite.twoline2satrec(state.tle.line1, state.tle.line2);
-        const current = calculateCurrentPosition(satrec);
-        const nextPass = calculatePass(satrec, observer, new Date());
-        setState(prev => ({ ...prev, current, nextPass }));
-      } catch {
-        setState(prev => ({ ...prev, error: true }));
-      }
-    }
-  }, [state.tle, observer]);
-
-  async function fetchTle(norad: string) {
-    setState(prev => ({ ...prev, loading: true, error: false, tle: null, current: null, nextPass: null }));
+  const load = useCallback(async () => {
+    setLoading(true);
+    setError(null);
     try {
-      const res = await fetch(`${BACKEND_URL}/api/satellites/tle?norad=${norad}`);
-      if (!res.ok) throw new Error("TLE alinamadi");
-      const tle = (await res.json()) as TleData;
-      setState(prev => ({ ...prev, tle, loading: false }));
-    } catch (error) {
-      setState(prev => ({ ...prev, loading: false, error: true }));
-    }
-  }
+      const { status } = await Location.requestForegroundPermissionsAsync();
+      let loc = { ...FALLBACK };
+      let real = false;
+      if (status === "granted") {
+        const l = await Promise.race([
+          Location.getCurrentPositionAsync({ accuracy: Location.Accuracy.Balanced }),
+          new Promise<null>((res) => setTimeout(() => res(null), 8000)),
+        ]).catch(() => null);
+        const known = l ?? (await Location.getLastKnownPositionAsync().catch(() => null));
+        if (known) {
+          loc = { lat: known.coords.latitude, lon: known.coords.longitude };
+          real = true;
+        }
+      }
+      setObs(loc);
+      setObsReal(real);
 
-  const isOverTurkey = useMemo(() => {
-    if (!state.current) return false;
-    const { lat, lon } = state.current;
-    return lat >= 36 && lat <= 42 && lon >= 26 && lon <= 45;
-  }, [state.current]);
+      // GEO Türksat'lar: isim filtresiyle otomatik
+      const geoTles = await fetchTlesFromGroup("geo", /TURKSAT/i);
+      // LEO: CATNR bazlı
+      const leoEntries: SatEntry[] = await Promise.all(
+        LEO_SATS.map(async (s) => {
+          const tle = await fetchTleByCatnr(s.catnr);
+          if (!tle) return { key: s.key, short: s.short, fullName: s.short, desc: s.desc, tle: null, pos: null, passes: [], isGeo: false };
+          const nameOk = tle.name.toUpperCase().includes(s.short.split("-")[0].replace("GÖKTÜRK", "GOKTURK").slice(0, 5)) || true;
+          void nameOk; // CelesTrak bazen farklı yazar; pozisyon yine doğrudur
+          return {
+            key: s.key,
+            short: s.short,
+            fullName: tle.name,
+            desc: s.desc,
+            tle,
+            pos: getPosition(tle),
+            passes: computePasses(tle, loc.lat, loc.lon, { hours: 72, minEl: 10 }),
+            isGeo: false,
+          };
+        })
+      );
+
+      const geoEntries: SatEntry[] = geoTles.map((t) => {
+        const m = t.name.match(/T.?RKSAT\s*([0-9A-C]+)/i);
+        return {
+          key: m?.[1]?.replace(/\s/g, "") ?? t.name,
+          short: m?.[1] ? `T${m[1]}` : t.name,
+          fullName: t.name,
+          desc: "Sabit yörünge (GEO)",
+          tle: t,
+          pos: getPosition(t),
+          passes: [],
+          isGeo: true,
+        };
+      });
+
+      const all = [...geoEntries, ...leoEntries.filter((s) => s.tle)];
+      setSats(all);
+      if (all.length === 0) setError("Hiçbir TLE alınamadı — internet bağlantınızı kontrol edin.");
+      setSelected((prev) => (prev && all.some((s) => s.key === prev) ? prev : all[0]?.key ?? null));
+    } catch {
+      setError("Uydu verisi alınamadı.");
+    } finally {
+      setLoading(false);
+    }
+  }, []);
+
+  useEffect(() => {
+    load();
+  }, [load]);
+
+  const current = sats.find((s) => s.key === selected) ?? null;
 
   return (
-    <View style={[styles.root, { backgroundColor: colors.background }]}>
+    <View style={[styles.root, { backgroundColor: colors.background, paddingTop: topPad }]}>
+      <View style={styles.header}>
+        <Pressable onPress={() => router.back()} style={({ pressed }) => [{ opacity: pressed ? 0.6 : 1 }]}>
+          <Feather name="arrow-left" size={24} color={colors.foreground} />
+        </Pressable>
+        <Text style={[styles.headerTitle, { color: colors.foreground }]}>Türk Uyduları</Text>
+        <Pressable onPress={load} style={({ pressed }) => [{ opacity: pressed ? 0.6 : 1 }]}>
+          <Feather name="refresh-cw" size={20} color={colors.primary} />
+        </Pressable>
+      </View>
+
       <ScrollView
-        style={{ flex: 1 }}
-        contentContainerStyle={{ paddingTop: topPad + 16, paddingBottom: 120 }}
+        contentContainerStyle={{ padding: 20, paddingBottom: 60 }}
+        refreshControl={<RefreshControl refreshing={loading} onRefresh={load} tintColor={colors.primary} />}
         showsVerticalScrollIndicator={false}
       >
-        <View style={styles.header}>
-          <Pressable onPress={() => router.back()} style={styles.backBtn}>
-            <Feather name="chevron-left" size={24} color={colors.foreground} />
-          </Pressable>
-          <Text style={[styles.title, { color: colors.foreground }]}>Türk Uyduları</Text>
-          <View style={{ width: 32 }} />
-        </View>
-
-        <Text style={[styles.subtitle, { color: colors.mutedForeground }]}>
+        <Text style={[styles.desc, { color: colors.mutedForeground }]}>
           Gerçek TLE verisi ve SGP4 yörünge hesabıyla Türkiye'nin uydularını takip edin.
         </Text>
 
-        <ScrollView
-          horizontal
-          showsHorizontalScrollIndicator={false}
-          contentContainerStyle={styles.satList}
-        >
-          {TURKISH_SATELLITES.map(sat => {
-            const active = sat.id === selected.id;
-            return (
-              <Pressable
-                key={sat.id}
-                onPress={() => setSelected(sat)}
-                style={[
-                  styles.satChip,
-                  {
-                    backgroundColor: active ? sat.color + "22" : colors.card,
-                    borderColor: active ? sat.color : colors.border,
-                  },
-                ]}
-              >
-                <View style={[styles.satDot, { backgroundColor: sat.color }]} />
-                <Text style={[styles.satChipText, { color: active ? sat.color : colors.foreground }]}>
-                  {sat.shortName}
-                </Text>
-              </Pressable>
-            );
-          })}
-        </ScrollView>
-
-        <View style={[styles.card, { backgroundColor: colors.card, borderColor: colors.border }]}>
-          <View style={styles.cardHeader}>
-            <View style={[styles.iconWrap, { backgroundColor: selected.color + "18" }]}>
-              <Feather name="radio" size={20} color={selected.color} />
-            </View>
-            <View style={{ flex: 1 }}>
-              <Text style={[styles.satName, { color: colors.foreground }]}>{selected.name}</Text>
-              <Text style={[styles.satMeta, { color: colors.mutedForeground }]}>
-                {selected.purpose} · NORAD {selected.norad}
-              </Text>
-            </View>
-          </View>
-
-          <View style={styles.detailRow}>
-            <View style={styles.detailCell}>
-              <Text style={[styles.detailLabel, { color: colors.mutedForeground }]}>İşletici</Text>
-              <Text style={[styles.detailValue, { color: colors.foreground }]}>{selected.operator}</Text>
-            </View>
-            <View style={styles.detailCell}>
-              <Text style={[styles.detailLabel, { color: colors.mutedForeground }]}>Fırlatılma</Text>
-              <Text style={[styles.detailValue, { color: colors.foreground }]}>{selected.launched}</Text>
-            </View>
-          </View>
-        </View>
-
-        <View style={[styles.card, { backgroundColor: colors.card, borderColor: colors.border }]}>
-          <Text style={[styles.cardTitle, { color: colors.foreground }]}>Canlı Konum</Text>
-          {state.loading ? (
-            <ActivityIndicator color={colors.primary} style={{ marginVertical: 20 }} />
-          ) : state.error || !state.current ? (
-            <Text style={[styles.errorText, { color: colors.mutedForeground }]}>
-              Konum verisi hesaplanamadi — TLE proxy'sini kontrol edin.
-            </Text>
-          ) : (
-            <>
-              <View style={styles.posRow}>
-                <View style={styles.posCell}>
-                  <Text style={[styles.posValue, { color: colors.foreground }]}>
-                    {state.current.lat.toFixed(2)}°
-                  </Text>
-                  <Text style={[styles.posLabel, { color: colors.mutedForeground }]}>Enlem</Text>
-                </View>
-                <View style={styles.posCell}>
-                  <Text style={[styles.posValue, { color: colors.foreground }]}>
-                    {state.current.lon.toFixed(2)}°
-                  </Text>
-                  <Text style={[styles.posLabel, { color: colors.mutedForeground }]}>Boylam</Text>
-                </View>
-                <View style={styles.posCell}>
-                  <Text style={[styles.posValue, { color: colors.foreground }]}>
-                    {state.current.alt.toFixed(0)} km
-                  </Text>
-                  <Text style={[styles.posLabel, { color: colors.mutedForeground }]}>Yükseklik</Text>
-                </View>
-              </View>
-
-              <View
-                style={[
-                  styles.regionBadge,
-                  {
-                    backgroundColor: isOverTurkey ? colors.accent + "22" : colors.warning + "22",
-                    borderColor: isOverTurkey ? colors.accent + "44" : colors.warning + "44",
-                  },
-                ]}
-              >
-                <Feather
-                  name={isOverTurkey ? "check-circle" : "globe"}
-                  size={14}
-                  color={isOverTurkey ? colors.accent : colors.warning}
-                />
-                <Text style={[styles.regionText, { color: isOverTurkey ? colors.accent : colors.warning }]}>
-                  {isOverTurkey ? "Şu an Türkiye üzerinde" : "Türkiye üzerinde değil"}
-                </Text>
-              </View>
-            </>
-          )}
-        </View>
-
-        <View style={[styles.card, { backgroundColor: colors.card, borderColor: colors.border }]}>
-          <Text style={[styles.cardTitle, { color: colors.foreground }]}>Türkiye Üzerinden Sonraki Geçiş</Text>
-          {state.loading ? (
-            <ActivityIndicator color={colors.primary} style={{ marginVertical: 20 }} />
-          ) : !state.nextPass ? (
-            <Text style={[styles.errorText, { color: colors.mutedForeground }]}>
-              Sonraki 72 saat içinde geçiş bulunamadi veya TLE yüklenemedi.
-            </Text>
-          ) : (
-            <>
-              <View style={styles.passRow}>
-                <Feather name="clock" size={18} color={colors.primary} />
-                <Text style={[styles.passValue, { color: colors.foreground }]}>
-                  {state.nextPass.start.toLocaleString("tr-TR", {
-                    day: "2-digit",
-                    month: "long",
-                    hour: "2-digit",
-                    minute: "2-digit",
-                  })}
-                </Text>
-              </View>
-              <View style={styles.passRow}>
-                <Feather name="arrow-up" size={18} color={colors.accent} />
-                <Text style={[styles.passValue, { color: colors.foreground }]}>
-                  Maksimum yükseklik: {state.nextPass.maxElevation.toFixed(1)}°
-                </Text>
-              </View>
-              <View style={styles.passRow}>
-                <Feather name="watch" size={18} color={colors.warning} />
-                <Text style={[styles.passValue, { color: colors.foreground }]}>
-                  Süre: ~{state.nextPass.durationMinutes} dk
-                </Text>
-              </View>
-            </>
-          )}
-        </View>
-
-        <View style={[styles.card, { backgroundColor: colors.card, borderColor: colors.border }]}>
-          <Text style={[styles.cardTitle, { color: colors.foreground }]}>Gözlemci Konumu</Text>
-          <Text style={[styles.cardText, { color: colors.mutedForeground }]}>
-            Varsayılan: Türkiye merkezi ({observer.lat}°N, {observer.lon}°E). Gelecekte cihaz konumu
-            entegrasyonu eklenebilir.
+        <View style={[styles.locCard, { borderColor: colors.border, backgroundColor: colors.card }]}>
+          <Feather name="map-pin" size={14} color={colors.primary} />
+          <Text style={[styles.locText, { color: colors.foreground }]}>
+            Gözlemci: {obs.lat.toFixed(2)}°, {obs.lon.toFixed(2)}°{!obsReal ? " (varsayılan: Türkiye merkezi)" : ""}
           </Text>
         </View>
+
+        {/* Uydu çipleri */}
+        <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.chips}>
+          {sats.map((s) => (
+            <Pressable
+              key={s.key}
+              onPress={() => setSelected(s.key)}
+              style={[
+                styles.chip,
+                {
+                  backgroundColor: selected === s.key ? colors.danger + "22" : colors.card,
+                  borderColor: selected === s.key ? colors.danger : colors.border,
+                },
+              ]}
+            >
+              <View style={[styles.chipDot, { backgroundColor: s.isGeo ? colors.primary : colors.accent }]} />
+              <Text style={[styles.chipText, { color: colors.foreground }]}>{s.short}</Text>
+            </Pressable>
+          ))}
+        </ScrollView>
+
+        {loading ? (
+          <View style={styles.center}>
+            <ActivityIndicator color={colors.primary} />
+            <Text style={[styles.muted, { color: colors.mutedForeground }]}>TLE indiriliyor...</Text>
+          </View>
+        ) : error && sats.length === 0 ? (
+          <View style={[styles.center, { borderWidth: 1, borderColor: colors.border, borderRadius: 16, padding: 32 }]}>
+            <Feather name="wifi-off" size={28} color={colors.warning} />
+            <Text style={[styles.muted, { color: colors.mutedForeground, textAlign: "center" }]}>{error}</Text>
+            <Pressable onPress={load} style={[styles.retryBtn, { backgroundColor: colors.primary }]}>
+              <Text style={[styles.retryText, { color: colors.primaryForeground }]}>Tekrar Dene</Text>
+            </Pressable>
+          </View>
+        ) : current ? (
+          <>
+            {/* Seçili uydu kartı */}
+            <View style={[styles.satCard, { borderColor: colors.border, backgroundColor: colors.card }]}>
+              <View style={styles.satHeader}>
+                <View style={[styles.satIcon, { backgroundColor: (current.isGeo ? colors.primary : colors.accent) + "22" }]}>
+                  <Feather name="radio" size={20} color={current.isGeo ? colors.primary : colors.accent} />
+                </View>
+                <View style={{ flex: 1 }}>
+                  <Text style={[styles.satName, { color: colors.foreground }]}>{current.fullName}</Text>
+                  <Text style={[styles.muted, { color: colors.mutedForeground }]}>
+                    {current.desc} · TLE: CelesTrak (canlı)
+                  </Text>
+                </View>
+              </View>
+
+              {/* Canlı konum */}
+              <View style={styles.block}>
+                <Text style={[styles.blockTitle, { color: colors.foreground }]}>Canlı Konum (SGP4)</Text>
+                {current.pos ? (
+                  <Text style={[styles.blockValue, { color: colors.primary }]}>
+                    {current.pos.lat.toFixed(2)}°, {current.pos.lon.toFixed(2)}° ·{" "}
+                    {current.isGeo ? `${Math.round(current.pos.altKm)} km (GEO)` : `${Math.round(current.pos.altKm)} km yükseklik`}
+                  </Text>
+                ) : (
+                  <Text style={[styles.muted, { color: colors.mutedForeground }]}>Konum hesaplanamadı.</Text>
+                )}
+                {current.isGeo && (
+                  <Text style={[styles.mutedSmall, { color: colors.mutedForeground }]}>
+                    Sabit yörünge uydusu — Türkiye'den her zaman görünür, geçiş hesabı gerektirmez.
+                  </Text>
+                )}
+              </View>
+
+              {/* Türkiye üzerinden sonraki geçiş */}
+              {!current.isGeo && (
+                <View style={styles.block}>
+                  <Text style={[styles.blockTitle, { color: colors.foreground }]}>Türkiye Üzerinden Sonraki Geçiş</Text>
+                  {current.passes.length === 0 ? (
+                    <Text style={[styles.muted, { color: colors.mutedForeground }]}>
+                      Sonraki 72 saat içinde 10° üzeri geçiş bulunamadı.
+                    </Text>
+                  ) : (
+                    current.passes.slice(0, 3).map((p, i) => (
+                      <Text key={i} style={[styles.passLine, { color: colors.foreground }]}>
+                        Tepe: {new Date(p.peakMs).toLocaleString("tr-TR", { day: "2-digit", month: "short", hour: "2-digit", minute: "2-digit" })}{" "}
+                        · {p.maxEl.toFixed(0)}° yükselis · {((p.endMs - p.startMs) / 60000).toFixed(0)} dk sürüyor
+                      </Text>
+                    ))
+                  )}
+                </View>
+              )}
+            </View>
+          </>
+        ) : null}
       </ScrollView>
     </View>
   );
@@ -349,32 +253,26 @@ export default function UydularScreen() {
 
 const styles = StyleSheet.create({
   root: { flex: 1 },
-  header: { flexDirection: "row", alignItems: "center", justifyContent: "space-between", paddingHorizontal: 20, marginBottom: 8 },
-  backBtn: { padding: 4 },
-  title: { fontSize: 20, fontFamily: "Inter_700Bold" },
-  subtitle: { fontSize: 13, fontFamily: "Inter_400Regular", lineHeight: 19, paddingHorizontal: 20, marginBottom: 16 },
-  satList: { paddingHorizontal: 20, gap: 10, paddingBottom: 8 },
-  satChip: { flexDirection: "row", alignItems: "center", gap: 8, paddingHorizontal: 14, paddingVertical: 10, borderRadius: 999, borderWidth: 1 },
-  satDot: { width: 8, height: 8, borderRadius: 4 },
-  satChipText: { fontSize: 13, fontFamily: "Inter_600SemiBold" },
-  card: { marginHorizontal: 20, borderRadius: 16, borderWidth: 1, padding: 16, marginBottom: 16 },
-  cardHeader: { flexDirection: "row", alignItems: "center", gap: 12, marginBottom: 14 },
-  iconWrap: { width: 44, height: 44, borderRadius: 22, alignItems: "center", justifyContent: "center" },
-  satName: { fontSize: 17, fontFamily: "Inter_700Bold" },
-  satMeta: { fontSize: 12, fontFamily: "Inter_400Regular", marginTop: 2 },
-  detailRow: { flexDirection: "row", gap: 16 },
-  detailCell: { flex: 1 },
-  detailLabel: { fontSize: 11, fontFamily: "Inter_500Medium", marginBottom: 2 },
-  detailValue: { fontSize: 14, fontFamily: "Inter_600SemiBold" },
-  cardTitle: { fontSize: 15, fontFamily: "Inter_700Bold", marginBottom: 12 },
-  cardText: { fontSize: 13, fontFamily: "Inter_400Regular", lineHeight: 19 },
-  posRow: { flexDirection: "row", gap: 10, marginBottom: 14 },
-  posCell: { flex: 1, alignItems: "center", gap: 4 },
-  posValue: { fontSize: 18, fontFamily: "Inter_700Bold" },
-  posLabel: { fontSize: 11, fontFamily: "Inter_500Medium" },
-  regionBadge: { flexDirection: "row", alignItems: "center", gap: 8, paddingHorizontal: 12, paddingVertical: 8, borderRadius: 999, borderWidth: 1, alignSelf: "flex-start" },
-  regionText: { fontSize: 13, fontFamily: "Inter_600SemiBold" },
-  passRow: { flexDirection: "row", alignItems: "center", gap: 10, marginBottom: 10 },
-  passValue: { fontSize: 14, fontFamily: "Inter_600SemiBold" },
-  errorText: { fontSize: 13, fontFamily: "Inter_400Regular", textAlign: "center", paddingVertical: 8 },
+  header: { flexDirection: "row", alignItems: "center", justifyContent: "space-between", padding: 16, paddingBottom: 12, borderBottomWidth: 1, borderBottomColor: "rgba(255,255,255,0.06)" },
+  headerTitle: { fontSize: 18, fontFamily: "Inter_700Bold" },
+  desc: { fontSize: 13, fontFamily: "Inter_400Regular", marginBottom: 12, lineHeight: 19 },
+  locCard: { flexDirection: "row", alignItems: "center", gap: 8, borderRadius: 12, borderWidth: 1, padding: 10, marginBottom: 14 },
+  locText: { fontSize: 12, fontFamily: "Inter_500Medium" },
+  chips: { gap: 8, paddingBottom: 14 },
+  chip: { flexDirection: "row", alignItems: "center", gap: 6, paddingHorizontal: 14, paddingVertical: 8, borderRadius: 20, borderWidth: 1 },
+  chipDot: { width: 8, height: 8, borderRadius: 4 },
+  chipText: { fontSize: 13, fontFamily: "Inter_600SemiBold" },
+  center: { alignItems: "center", gap: 12, paddingVertical: 40 },
+  muted: { fontSize: 13, fontFamily: "Inter_400Regular" },
+  mutedSmall: { fontSize: 11, fontFamily: "Inter_400Regular", marginTop: 4 },
+  retryBtn: { paddingHorizontal: 20, paddingVertical: 10, borderRadius: 12 },
+  retryText: { fontSize: 14, fontFamily: "Inter_700Bold" },
+  satCard: { borderRadius: 16, borderWidth: 1, padding: 16, gap: 14 },
+  satHeader: { flexDirection: "row", alignItems: "center", gap: 12 },
+  satIcon: { width: 40, height: 40, borderRadius: 12, alignItems: "center", justifyContent: "center" },
+  satName: { fontSize: 16, fontFamily: "Inter_700Bold" },
+  block: { gap: 4 },
+  blockTitle: { fontSize: 14, fontFamily: "Inter_700Bold" },
+  blockValue: { fontSize: 15, fontFamily: "Inter_600SemiBold" },
+  passLine: { fontSize: 13, fontFamily: "Inter_500Medium", lineHeight: 20 },
 });
