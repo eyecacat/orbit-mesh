@@ -89,6 +89,8 @@ export interface BleContextValue {
   scanning: boolean;
   devices: BleDeviceInfo[];
   connectedDevices: BleDeviceInfo[];         // ÇOKLU cihaz listesi
+  /** Backward-compatible convenience alias for screens that show one device. */
+  connectedDevice: BleDeviceInfo | null;
   telemetry: OrbitMeshTelemetry[];
   latestTelemetry: OrbitMeshTelemetry | null;
   logs: LogEntry[];
@@ -615,6 +617,7 @@ export function BleProvider({ children }: { children: React.ReactNode }) {
         scanning,
         devices,
         connectedDevices,
+      connectedDevice: connectedDevices[0] ?? null,
         telemetry,
         latestTelemetry,
         logs,

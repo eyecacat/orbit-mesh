@@ -170,7 +170,7 @@ export default function BleScreen() {
                 </Text>
                 <Text style={[styles.connectedId, { color: colors.mutedForeground }]}>{connectedDevice.id}</Text>
               </View>
-              <Pressable onPress={disconnect} style={({ pressed }) => ({ opacity: pressed ? 0.6 : 1 })}>
+              <Pressable onPress={() => disconnect()} style={({ pressed }) => ({ opacity: pressed ? 0.6 : 1 })}>
                 <Feather name="x-circle" size={22} color={colors.danger} />
               </Pressable>
             </View>

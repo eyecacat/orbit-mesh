@@ -4,11 +4,11 @@ import { router } from "expo-router";
 import React, { useEffect, useRef, useState } from "react";
 import { Platform, Pressable, ScrollView, StyleSheet, Text, View, Dimensions } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
-import MapView, { Marker, TileOverlay, Polyline } from "react-native-maps";
 import * as Location from "expo-location";
 
 import { useBle } from "@/context/BleContext";
 import { useColors } from "@/hooks/useColors";
+import ObservationMap from "@/components/ObservationMap";
 
 const { width } = Dimensions.get("window");
 const FALLBACK_LAT = 41.0082;
@@ -59,7 +59,6 @@ export default function MapScreen() {
 
   const [location, setLocation] = useState<{ lat: number; lng: number } | null>(null);
   const [locationError, setLocationError] = useState<string | null>(null);
-  const mapRef = useRef<MapView | null>(null);
 
   // Konum arka planda çözülür; harita BEKLEMEZ. 10 sn'lik mutlak watchdog var.
   useEffect(() => {
@@ -81,10 +80,6 @@ export default function MapScreen() {
         const loc = live ?? (await Location.getLastKnownPositionAsync().catch(() => null));
         if (!cancelled && loc) {
           setLocation({ lat: loc.coords.latitude, lng: loc.coords.longitude });
-          mapRef.current?.animateToRegion({
-            latitude: loc.coords.latitude, longitude: loc.coords.longitude,
-            latitudeDelta: 0.05, longitudeDelta: 0.05,
-          });
         }
       } catch { /* varsayılan kalır */ }
     })();
@@ -134,23 +129,11 @@ export default function MapScreen() {
           </View>
         )}
         <AnomalyVerdict consensus={consensus} tele={tele} />
-        <MapView
-          ref={mapRef}
-          style={{ width: width - 20, height: 320 }}
-          initialRegion={{ latitude: FALLBACK_LAT, longitude: FALLBACK_LNG, latitudeDelta: 0.05, longitudeDelta: 0.05 }}
-          showsUserLocation={!locationError}
-          showsMyLocationButton={false}
-          showsCompass
-        >
-          <TileOverlay tileUrlTemplate="https://tile.openstreetmap.org/{z}/{x}/{y}.png" maximumZ={19} zIndex={-1} />
-          {markers.length > 1 && (
-            <Polyline coordinates={markers.map((m) => ({ latitude: m.latitude, longitude: m.longitude }))} strokeColor="#8B5CF6" strokeWidth={2} lineDashPattern={[6, 6]} />
-          )}
-          {markers.map((m) => (
-            <Marker key={m.id} coordinate={{ latitude: m.latitude, longitude: m.longitude }}
-              title={m.name} description={`RSSI: ${m.rssi ?? "?"} dBm · Skor: ${Math.round(m.score)}`} pinColor={m.color} />
-          ))}
-        </MapView>
+        <ObservationMap
+          center={{ lat: baseLat, lng: baseLng }}
+          markers={markers}
+          width={width - 20}
+        />
         <View style={[styles.legend, { backgroundColor: colors.background + "dd" }]}>
           {[{ c: "#3ecf8e", t: "Normal" }, { c: "#ffd166", t: "Şüpheli" }, { c: "#e8434f", t: "Kritik" }].map((l) => (
             <View key={l.t} style={styles.legendRow}>

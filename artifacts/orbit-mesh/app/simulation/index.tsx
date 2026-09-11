@@ -40,20 +40,13 @@ export default function SimulationScreen() {
     Array(20).fill(0)
   );
 
-  // Her 900ms'de bir veri güncelle (BLE'den geliyorsa onu kullan, yoksa simüle et)
+  // Her 900ms'de bir gerçek BLE örneği geldiyse grafik geçmişine ekle.
   useEffect(() => {
     const interval = setInterval(() => {
-      let amp, sch, mot;
-      if (isConnected && tele) {
-        amp = tele.vlf_amp;
-        sch = tele.sch_hz;
-        mot = tele.mot_vel;
-      } else {
-        // Simülasyon modu
-        amp = Math.random() * 500 + 50;
-        sch = 7.83 + (Math.random() - 0.5) * 0.6;
-        mot = Math.random() * 3;
-      }
+      if (!isConnected || !tele) return;
+      const amp = tele.vlf_amp;
+      const sch = tele.sch_hz;
+      const mot = tele.mot_vel;
       setVlfHistory((prev) => [...prev.slice(1), amp]);
       setSchumannHistory((prev) => [...prev.slice(1), sch]);
       setMotionHistory((prev) => [...prev.slice(1), mot]);
@@ -122,7 +115,7 @@ export default function SimulationScreen() {
           >
             {isConnected
               ? `${connectedDevice?.name} bağlı — Gerçek veri akışı`
-              : "Simülasyon modu (BLE bağlı değil)"}
+              : "BLE bağlantısı yok — gerçek telemetri bekleniyor"}
           </Text>
         </View>
 
@@ -168,7 +161,7 @@ export default function SimulationScreen() {
             height={180}
             chartConfig={{
               ...chartConfig,
-              color: () => colors.mor,
+              color: () => colors.secondary,
             }}
             bezier
             style={styles.chart}
@@ -194,7 +187,7 @@ export default function SimulationScreen() {
             height={180}
             chartConfig={{
               ...chartConfig,
-              color: () => colors.turquoise,
+              color: () => colors.accent,
             }}
             bezier
             style={styles.chart}
@@ -232,7 +225,7 @@ export default function SimulationScreen() {
               <Text style={[styles.liveLabel, { color: colors.mutedForeground }]}>
                 Hareket Hızı
               </Text>
-              <Text style={[styles.liveValue, { color: colors.turquoise }]}>
+              <Text style={[styles.liveValue, { color: colors.accent }]}>
                 {(isConnected && tele ? tele.mot_vel : motionHistory[motionHistory.length - 1]).toFixed(2)} km/s
               </Text>
             </View>
@@ -241,7 +234,7 @@ export default function SimulationScreen() {
                 Durum
               </Text>
               <Text style={[styles.liveValue, { color: colors.foreground }]}>
-                {isConnected && tele ? tele.state : "SIMULATION"}
+                {isConnected && tele ? tele.state : "VERİ BEKLENİYOR"}
               </Text>
             </View>
           </View>

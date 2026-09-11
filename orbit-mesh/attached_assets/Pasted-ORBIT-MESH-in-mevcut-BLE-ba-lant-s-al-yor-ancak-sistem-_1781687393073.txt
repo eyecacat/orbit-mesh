@@ -1,0 +1,228 @@
+ORBIT-MESH'in mevcut BLE bağlantısı çalışıyor ancak sistem henüz gerçek seismik mesh mantığına ulaşmış değil.
+
+Amaç basit BLE veri görüntüleme değildir.
+
+Amaç:
+
+Deprem öncüsü olabilecek elektromanyetik ve çevresel anomalileri çoklu node ağı ile doğrulayan dağıtık erken uyarı araştırma sistemi oluşturmaktır.
+
+MEVCUT DURUM
+
+- BLE bağlantısı çalışıyor.
+- Node bulunabiliyor.
+- Telemetry geliyor.
+- anomaly flag geliyor.
+- Ancak VLF değerleri çoğu zaman 0 görünüyor.
+- AUET / HELIO / EarthSign ekranları yeni BLE Context ile haberleşiyor.
+
+İSTENEN MİMARİ
+
+1. TELEMETRY KATMANI
+
+Firmware'den gelen payload şu alanları desteklemeli:
+
+{
+  "nodeId":"NODE01",
+  "timestamp":123456,
+  "vlf_hz":52.7,
+  "vlf_amplitude":812,
+  "battery":91,
+  "temp_c":28.3,
+  "mx":12.4,
+  "my":-4.2,
+  "mz":8.1,
+  "ax":0.01,
+  "ay":0.02,
+  "az":0.98,
+  "anomaly":false
+}
+
+Telemetry parser tüm varyasyonları desteklesin.
+
+Örnek:
+
+vlf_hz
+vlf
+frequency
+
+aynı alan olarak yorumlanmalı.
+
+2. BASELINE ENGINE
+
+Yeni servis oluştur:
+
+services/baselineEngine.ts
+
+Her node için:
+
+- son 24 saat veri
+- moving average
+- rolling std deviation
+
+hesaplansın.
+
+Örnek:
+
+baseline.vlfMean
+baseline.vlfStd
+baseline.magMean
+baseline.magStd
+
+3. ANOMALY SCORE ENGINE
+
+Yeni servis:
+
+services/anomalyEngine.ts
+
+Basit threshold kullanma.
+
+Skor üret:
+
+score =
+0.40 * vlfScore +
+0.30 * magneticScore +
+0.20 * thermalScore +
+0.10 * seismicScore
+
+vlfScore:
+
+zscore(vlf)
+
+magneticScore:
+
+zscore(mx,my,mz magnitude)
+
+thermalScore:
+
+zscore(temp)
+
+seismicScore:
+
+accelerometer variance
+
+Sonuç:
+
+0-30 Normal
+30-60 Şüpheli
+60-80 Yüksek
+80-100 Kritik
+
+4. FALSE POSITIVE FİLTRESİ
+
+Node hareket ediyorsa veri geçersiz say.
+
+Örnek:
+
+if motionMagnitude > threshold
+ignore anomaly
+
+Çünkü cihaz elde tutulurken alarm oluşmamalı.
+
+5. MESH DOĞRULAMA MOTORU
+
+Yeni servis:
+
+services/meshConsensus.ts
+
+Tek node alarm üretemez.
+
+Kurallar:
+
+1 node anomalisi
+=> NORMAL
+
+2 node anomalisi
+=> ŞÜPHELİ
+
+3+ node anomalisi
+=> DOĞRULANMIŞ
+
+Node'lar son 15 dakika içinde aynı tür anomalide birleşmeli.
+
+6. EARTHSIGN ENTEGRASYONU
+
+EarthSign ekranı artık manuel kayıt değil.
+
+Doğrulanmış mesh anomalileri otomatik kayıt oluşturmalı.
+
+Kayıt içeriği:
+
+timestamp
+node list
+score
+vlf values
+magnetic values
+location
+
+7. HELIO ENTEGRASYONU
+
+HELIO ekranı gerçek BLE verisi göstermeli.
+
+Şunları canlı göster:
+
+VLF Frequency
+VLF Amplitude
+Schumann Delta
+Anomaly Score
+Node Health
+
+8. AUET ENTEGRASYONU
+
+AUET ekranı:
+
+Connected Node
+Battery
+Temperature
+Signal Quality
+Current Anomaly Score
+
+göstermeli.
+
+9. GLOBAL NODE REGISTRY
+
+Yeni context:
+
+NodeRegistryContext
+
+Tüm bağlı node'lar burada tutulmalı.
+
+interface MeshNode {
+ id:string;
+ lastSeen:number;
+ telemetry:NodeTelemetry;
+ anomalyScore:number;
+ health:string;
+}
+
+10. ANALYTICS PANEL
+
+Yeni ekran:
+
+/mesh
+
+Göster:
+
+Node sayısı
+Aktif node
+Anomaly score haritası
+Son anomaliler
+Consensus durumu
+
+ÖNEMLİ
+
+Sistemin amacı basit BLE monitörü değildir.
+
+Amaç:
+
+- Çoklu node
+- Sensör füzyonu
+- İstatistiksel anomali tespiti
+- Mesh doğrulaması
+- Yanlış pozitif azaltımı
+
+mimarisi kurmaktır.
+
+Tüm implementasyonu mevcut Expo Router + BLE Context mimarisi ile uyumlu şekilde yap.
+Önce servisleri oluştur.
+Sonra ekranları bu servislerden veri okuyacak şekilde güncelle.
+Mock veri değil gerçek telemetry akışı kullan.

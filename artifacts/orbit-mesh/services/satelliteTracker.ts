@@ -113,10 +113,9 @@ export function getPosition(tle: TleData, date = new Date()): GeoPos | null {
   const satrec = makeSatrec(tle);
   if (!satrec) return null;
   const pv = satellite.propagate(satrec, date);
-  if (!pv || !pv.position) return null;
+  if (!pv || typeof pv === "boolean" || !pv.position || typeof pv.position === "boolean") return null;
   const gmst = satellite.gstime(date);
-  const ecf = satellite.eciToEcf(pv.position, gmst);
-  const geo = satellite.ecfToGeodetic(ecf, satellite.constants.wgs84);
+  const geo = satellite.eciToGeodetic(pv.position, gmst);
   return { lat: satellite.degreesLat(geo.latitude), lon: satellite.degreesLong(geo.longitude), altKm: geo.height };
 }
 
@@ -124,15 +123,14 @@ export function getLookAngles(tle: TleData, obsLat: number, obsLon: number, obsA
   const satrec = makeSatrec(tle);
   if (!satrec) return null;
   const pv = satellite.propagate(satrec, date);
-  if (!pv || !pv.position) return null;
+  if (!pv || typeof pv === "boolean" || !pv.position || typeof pv.position === "boolean") return null;
   const gmst = satellite.gstime(date);
-  const ecf = satellite.eciToEcf(pv.position, gmst);
   const observerGd = {
     latitude: satellite.degreesToRadians(obsLat),
     longitude: satellite.degreesToRadians(obsLon),
     height: obsAltKm,
   };
-  const look = satellite.ecfToLookAngles(observerGd, ecf);
+  const look = satellite.ecfToLookAngles(observerGd, satellite.eciToEcf(pv.position, gmst));
   return { azDeg: (look.azimuth * 180) / Math.PI, elDeg: (look.elevation * 180) / Math.PI, rangeKm: look.rangeSat };
 }
 
@@ -156,10 +154,9 @@ export function computePasses(tle: TleData, obsLat: number, obsLon: number, opts
     const date = new Date(t);
     const pv = satellite.propagate(satrec, date);
     let el = -90, az = 0;
-    if (pv && pv.position) {
+     if (pv && typeof pv !== "boolean" && pv.position && typeof pv.position !== "boolean") {
       const gmst = satellite.gstime(date);
-      const ecf = satellite.eciToEcf(pv.position, gmst);
-      const look = satellite.ecfToLookAngles(observerGd, ecf);
+       const look = satellite.ecfToLookAngles(observerGd, satellite.eciToEcf(pv.position, gmst));
       el = (look.elevation * 180) / Math.PI;
       az = (look.azimuth * 180) / Math.PI;
     }

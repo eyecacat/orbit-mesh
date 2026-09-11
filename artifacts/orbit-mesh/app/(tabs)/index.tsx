@@ -193,7 +193,7 @@ export default function HomeScreen() {
   // Aktif oturumun kimliği (pqcEngine.ts'deki sessionId) — "her sinyalde
   // değişen, tekrarlanmayan" oturumun somut, gösterilebilir kanıtı.
   const pqcSessionId: string | null = pqcStatus?.pqcActiveNodes?.[0]
-    ? (latestTelemetry?.pqcSessionId ?? null)
+    ? (latestTelemetry?.pqc_seed ?? null)
     : null;
 
   // Mesh durumu

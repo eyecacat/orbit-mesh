@@ -1,0 +1,149 @@
+import React, { useEffect, useState } from "react";
+import { View, Text, StyleSheet, ScrollView, Dimensions, Platform } from "react-native";
+import { Feather } from "@expo/vector-icons";
+import { LinearGradient } from "expo-linear-gradient";
+import { useSafeAreaInsets } from "react-native-safe-area-context";
+import { useColors } from "@/hooks/useColors";
+import { useBle } from "@/context/BleContext";
+
+const { width } = Dimensions.get("window");
+
+function deriveCosmicSignature(vlf: number, amp: number, time: number): string {
+  const entropy = Math.sin(vlf * 0.1) * 10000 + Math.cos(amp * 10) * 5000 + time * 0.001;
+  let hex = "";
+  const chars = "abcdef0123456789";
+  for (let i = 0; i < 64; i++) {
+    const idx = Math.floor(Math.abs(Math.sin(entropy + i * 1.618) * 16)) % 16;
+    hex += chars[idx];
+    if (i % 8 === 7 && i < 63) hex += " ";
+  }
+  return hex;
+}
+
+function derivePQCKey(vlf: number, amp: number, time: number): string {
+  const seed = deriveCosmicSignature(vlf, amp, time);
+  const pk = seed.split(" ").map((chunk, i) => {
+    const rotated = chunk.split("").reverse().join("");
+    return rotated + (i % 2 === 0 ? "a7" : "f3");
+  }).join("");
+  return pk;
+}
+
+export default function KozmikLabScreen() {
+  const colors = useColors();
+  const insets = useSafeAreaInsets();
+  const { connectedDevice, latestTelemetry } = useBle();
+  const t = latestTelemetry;
+  const isConnected = !!connectedDevice;
+
+  const [sig, setSig] = useState("a7f2 9e4d b1c8...");
+  const [pqcKey, setPqcKey] = useState("...");
+  const [entropy, setEntropy] = useState(0);
+
+  useEffect(() => {
+    const id = setInterval(() => {
+      if (t) {
+        const now = Date.now();
+        const newSig = deriveCosmicSignature(t.vlf_hz, t.vlf_amp, now);
+        const newKey = derivePQCKey(t.vlf_hz, t.vlf_amp, now);
+        const ent = Math.abs(Math.sin(t.vlf_hz * 0.1) * 10000 + Math.cos(t.vlf_amp * 10) * 5000);
+        setSig(newSig);
+        setPqcKey(newKey);
+        setEntropy(ent);
+      }
+    }, 1000);
+    return () => clearInterval(id);
+  }, [t]);
+
+  return (
+    <View style={[styles.root, { backgroundColor: "#020408" }]}>
+      <LinearGradient colors={["#0f0518", "#020408"]} style={StyleSheet.absoluteFill} />
+      <ScrollView contentContainerStyle={{ paddingTop: insets.top + 20, paddingBottom: 120 }} showsVerticalScrollIndicator={false}>
+        
+        <View style={styles.header}>
+          <Feather name="key" size={28} color="#a855f7" />
+          <Text style={styles.headerTitle}>KOZMİK LABORATUVAR</Text>
+          <View style={[styles.liveDot, { backgroundColor: isConnected ? "#10b981" : "#ef4444" }]} />
+        </View>
+
+        {!isConnected && (
+          <View style={[styles.bleCard, { borderColor: "#ef4444" }]}>
+            <Feather name="bluetooth" size={20} color="#ef4444" />
+            <Text style={[styles.bleText, { color: "#fca5a5" }]}>
+              Cihaz bağlı değil. Kozmik imza üretmek için Deneyap Kart bağlantısı gerekli.
+            </Text>
+          </View>
+        )}
+
+        {isConnected && t && (
+          <View style={styles.metricsRow}>
+            <View style={[styles.metricCard, { borderColor: "#7c3aed" }]}>
+              <Feather name="radio" size={18} color="#a855f7" />
+              <Text style={styles.metricValue}>{t.vlf_hz.toFixed(2)} Hz</Text>
+              <Text style={styles.metricLabel}>VLF Frekans</Text>
+            </View>
+            <View style={[styles.metricCard, { borderColor: "#7c3aed" }]}>
+              <Feather name="activity" size={18} color="#a855f7" />
+              <Text style={styles.metricValue}>{t.vlf_amp.toFixed(0)} mV</Text>
+              <Text style={styles.metricLabel}>Genlik</Text>
+            </View>
+            <View style={[styles.metricCard, { borderColor: "#7c3aed" }]}>
+              <Feather name="shuffle" size={18} color="#a855f7" />
+              <Text style={styles.metricValue}>{entropy.toFixed(0)}</Text>
+              <Text style={styles.metricLabel}>Entropi</Text>
+            </View>
+          </View>
+        )}
+
+        <View style={[styles.sigCard, { borderColor: "#6d28d9" }]}>
+          <Text style={[styles.sigLabel, { color: "#c4b5fd" }]}>KOZMİK İMZA (VLF-SEED)</Text>
+          <Text style={styles.sigValue}>{sig}</Text>
+          <Text style={[styles.sigMeta, { color: "#a78bfa" }]}>
+            VLF ölçümünden türetilen gösterim önizlemesidir; kriptografik anahtar değildir.
+          </Text>
+        </View>
+
+        <View style={[styles.sigCard, { borderColor: "#4c1d95" }]}>
+          <Text style={[styles.sigLabel, { color: "#c4b5fd" }]}>PQC PUBLIC KEY (DILITHIUM-LIKE)</Text>
+          <Text style={[styles.sigValue, { fontSize: 11 }]}>{pqcKey}</Text>
+          <Text style={[styles.sigMeta, { color: "#a78bfa" }]}>
+            PQC entegrasyonu için PoC gösterimidir; üretim kriptografisi olarak kullanılmaz.
+          </Text>
+        </View>
+
+        <View style={[styles.infoCard, { borderColor: colors.border }]}>
+          <Text style={[styles.infoTitle, { color: colors.foreground }]}>Nasıl Çalışır?</Text>
+          <Text style={[styles.infoText, { color: colors.mutedForeground }]}>
+            1. Deneyap Kart ADC'si VLF anteninden analog sinyal okur. 2. Firmware ölçümü frekans ve genlik alanlarına ayırır. 3. Bu ekran ölçümden görsel bir imza önizlemesi üretir. 4. Gösterim, PQC doğrulamasının yerini tutmaz; üretim anahtarı veya güvenlik kanıtı değildir.
+          </Text>
+        </View>
+
+        <View style={styles.footerBox}>
+          <Text style={styles.footerTitle}>Kuantum Güvenliği = Kozmik Entropi</Text>
+        </View>
+      </ScrollView>
+    </View>
+  );
+}
+
+const styles = StyleSheet.create({
+  root: { flex: 1 },
+  header: { flexDirection: "row", alignItems: "center", justifyContent: "center", gap: 10, marginBottom: 24 },
+  headerTitle: { fontSize: 20, fontFamily: "Inter_700Bold", color: "#e9d5ff", letterSpacing: 2 },
+  liveDot: { width: 8, height: 8, borderRadius: 4, marginLeft: 8 },
+  bleCard: { marginHorizontal: 20, borderRadius: 16, borderWidth: 1, padding: 16, marginBottom: 16, backgroundColor: "#450a0a", flexDirection: "row", alignItems: "center", gap: 10 },
+  bleText: { flex: 1, fontSize: 13, fontFamily: "Inter_500Medium" },
+  metricsRow: { flexDirection: "row", paddingHorizontal: 20, gap: 10, marginBottom: 20 },
+  metricCard: { flex: 1, backgroundColor: "#1a0b2e", borderRadius: 14, borderWidth: 1, padding: 14, alignItems: "center", gap: 4 },
+  metricValue: { fontSize: 18, fontFamily: "Inter_700Bold", color: "#fff" },
+  metricLabel: { fontSize: 10, fontFamily: "Inter_500Medium", color: "#a78bfa" },
+  sigCard: { marginHorizontal: 20, borderRadius: 16, borderWidth: 1, padding: 20, marginBottom: 16, backgroundColor: "#0f0518" },
+  sigLabel: { fontSize: 10, fontFamily: "Inter_700Bold", letterSpacing: 2, marginBottom: 10 },
+  sigValue: { fontSize: 14, fontFamily: Platform.OS === "ios" ? "Menlo" : "monospace", color: "#e879f9", letterSpacing: 1, lineHeight: 22 },
+  sigMeta: { fontSize: 11, fontFamily: "Inter_400Regular", marginTop: 10, lineHeight: 16 },
+  infoCard: { marginHorizontal: 20, borderRadius: 16, borderWidth: 1, padding: 16, marginBottom: 20, backgroundColor: "rgba(30,41,59,0.4)" },
+  infoTitle: { fontSize: 15, fontFamily: "Inter_700Bold", marginBottom: 10 },
+  infoText: { fontSize: 12, fontFamily: "Inter_400Regular", lineHeight: 20 },
+  footerBox: { alignItems: "center", marginTop: 10, marginBottom: 40 },
+  footerTitle: { fontSize: 14, fontFamily: "Inter_700Bold", color: "#a855f7", textAlign: "center" },
+});

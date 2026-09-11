@@ -1,0 +1,46 @@
+{
+  "expo": {
+    "name": "ORBIT-MESH",
+    "slug": "orbit-mesh",
+    "version": "1.0.0",
+    "runtimeVersion": {
+      "policy": "appVersion"
+    },
+    "owner": "eyecacat",
+    "orientation": "portrait",
+    "icon": "./assets/images/icon.png",
+    "scheme": "orbit-mesh",
+    "userInterfaceStyle": "dark",
+    "newArchEnabled": true,
+    "splash": {
+      "image": "./assets/images/icon.png",
+      "resizeMode": "contain",
+      "backgroundColor": "#040D1A"
+    },
+    "ios": {
+      "supportsTablet": false,
+      "bundleIdentifier": "com.orbitmesh.orbitmesh",
+      "infoPlist": {
+        "ITSAppUsesNonExemptEncryption": false
+      }
+    },
+    "android": {
+      "package": "com.orbitmesh.orbitmesh",
+      "permissions": [
+        "android.permission.ACTIVITY_RECOGNITION",
+        "android.permission.ACCESS_FINE_LOCATION",
+        "android.permission.SEND_SMS",
+        "android.permission.BLUETOOTH_SCAN",
+        "android.permission.BLUETOOTH_CONNECT",
+        "android.permission.BLUETOOTH",
+        "android.permission.BLUETOOTH_ADMIN"
+      ],
+      "allowBackup": false
+    },
+    "extra": {
+      "eas": {
+        "projectId": "dbd28b8a-fb3f-4ae8-98ef-e08234ebe1ff"
+      }
+    }
+  }
+}
