@@ -158,3 +158,6 @@ allowBuilds:
   esbuild: true
 onlyBuiltDependencies:
 - dtrace-provider
+# pnpm 12 install settings
+nodeLinker: hoisted
+shamefullyHoist: true
