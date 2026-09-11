@@ -186,4 +186,8 @@ const styles = StyleSheet.create({
   nowValue: { fontSize: 17, fontFamily: "Inter_700Bold", marginTop: 2 },
   badge: { paddingHorizontal: 10, paddingVertical: 4, borderRadius: 8 },
   badgeText: { fontSize: 11, fontFamily: "Inter_700Bold" },
-  sectionTitle: { fontSize: 16, fontFamily: "Inter_700Bold", marginBottom: 12
+  sectionTitle: { fontSize: 16, fontFamily: "Inter_700Bold", marginBottom: 12 },
+  passCard: { borderRadius: 14, borderWidth: 1, padding: 14, marginBottom: 10 },
+  passRow: { flexDirection: "row", alignItems: "center", gap: 10 },
+  passPeak: { fontSize: 14, fontFamily: "Inter_700Bold" },
+});
