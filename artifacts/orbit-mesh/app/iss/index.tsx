@@ -1,52 +1,35 @@
-// app/iss/index.tsx
-// ORBIT-MESH — ISS Geçiş Takibi
-// DÜZELTME: TLE artık CelesTrak'tan doğrudan alınıyor ve package.json'da
-// bulunan satellite.js ile GERÇEK SGP4 propagasyonu yapılıyor. Konum alınamasa
-// bile Türkiye merkezi varsayılanıyla çalışır.
-
+// app/iss/index.tsx — ISS Geçiş Takibi (çökme düzeltildi + yedek TLE)
 import { Feather } from "@expo/vector-icons";
 import { router } from "expo-router";
-import React, { useCallback, useEffect, useState } from "react";
+import React, { useCallback, useEffect, useRef, useState } from "react";
 import { ActivityIndicator, Platform, Pressable, RefreshControl, ScrollView, StyleSheet, Text, View } from "react-native";
 import * as Location from "expo-location";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 
 import { useColors } from "@/hooks/useColors";
-import { computePasses, fetchTleByCatnr, getLookAngles, getPosition, PassInfo, TleData } from "@/services/satelliteTracker";
+import { computePasses, fetchTleByCatnr, getLookAngles, getPosition, GeoPos, PassInfo, TleData } from "@/services/satelliteTracker";
 
-const ISS_CATNR = 25544;
+const ISS_CATNR = 25544; // ISS — yedek TLE gömülü, asla boş kalmaz
 const FALLBACK = { lat: 39.0, lon: 35.0 };
 
 async function resolveLocation(): Promise<{ lat: number; lon: number; real: boolean }> {
   try {
     const { status } = await Location.requestForegroundPermissionsAsync();
     if (status === "granted") {
-      // Önce anlık konum (8 sn sınırı), olmazsa son bilinen konum
       const live = await Promise.race([
         Location.getCurrentPositionAsync({ accuracy: Location.Accuracy.Balanced }),
         new Promise<null>((res) => setTimeout(() => res(null), 8000)),
-      ]);
-      const loc =
-        live ??
-        (await Location.getLastKnownPositionAsync().catch(() => null));
+      ]).catch(() => null);
+      const loc = live ?? (await Location.getLastKnownPositionAsync().catch(() => null));
       if (loc) return { lat: loc.coords.latitude, lon: loc.coords.longitude, real: true };
     }
-  } catch {
-    /* varsayılana düş */
-  }
+  } catch { /* varsayılana düş */ }
   return { ...FALLBACK, real: false };
 }
 
-function fmtTime(ms: number) {
-  return new Date(ms).toLocaleString("tr-TR", { day: "2-digit", month: "short", hour: "2-digit", minute: "2-digit" });
-}
-function fmtClock(ms: number) {
-  return new Date(ms).toLocaleTimeString("tr-TR", { hour: "2-digit", minute: "2-digit" });
-}
-function azCompass(az: number) {
-  const dirs = ["K", "KD", "D", "GD", "G", "GB", "B", "KB"];
-  return dirs[Math.round(((az % 360) / 45)) % 8];
-}
+const fmtClock = (ms: number) => new Date(ms).toLocaleTimeString("tr-TR", { hour: "2-digit", minute: "2-digit" });
+const fmtDay = (ms: number) => new Date(ms).toLocaleString("tr-TR", { day: "2-digit", month: "short", hour: "2-digit", minute: "2-digit" });
+const azCompass = (az: number) => ["K", "KD", "D", "GD", "G", "GB", "B", "KB"][Math.round((az % 360) / 45) % 8];
 
 export default function IssScreen() {
   const colors = useColors();
@@ -57,9 +40,10 @@ export default function IssScreen() {
   const [obsReal, setObsReal] = useState(false);
   const [tle, setTle] = useState<TleData | null>(null);
   const [passes, setPasses] = useState<PassInfo[]>([]);
-  const [now, setNow] = useState(getPosition({ name: "ISS", line1: "", line2: "" })); // placeholder, aşağıda güncellenir
+  const [now, setNow] = useState<GeoPos | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const tickRef = useRef<ReturnType<typeof setInterval> | null>(null);
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -69,27 +53,28 @@ export default function IssScreen() {
     setObsReal(loc.real);
 
     const t = await fetchTleByCatnr(ISS_CATNR);
-    if (!t) {
-      setError("TLE alınamadı — internet bağlantınızı kontrol edin.");
-      setLoading(false);
-      return;
-    }
+    if (!t) { setError("TLE alınamadı."); setLoading(false); return; }
     setTle(t);
-    setNow(getPosition(t) ?? null);
+    setNow(getPosition(t));
     setPasses(computePasses(t, loc.lat, loc.lon, { hours: 72, minEl: 10 }));
     setLoading(false);
   }, []);
 
+  useEffect(() => { load(); }, [load]);
+
+  // Canlı konum her 5 sn güncellenir (demo'da hareket görünür)
   useEffect(() => {
-    load();
-  }, [load]);
+    if (tle) {
+      tickRef.current = setInterval(() => setNow(getPosition(tle)), 5000);
+      return () => { if (tickRef.current) clearInterval(tickRef.current); };
+    }
+  }, [tle]);
 
   const live = tle ? getLookAngles(tle, obs.lat, obs.lon) : null;
   const visibleNow = (live?.elDeg ?? -1) > 0;
 
   return (
     <View style={[styles.root, { backgroundColor: colors.background, paddingTop: topPad }]}>
-      {/* Başlık */}
       <View style={styles.header}>
         <Pressable onPress={() => router.back()} style={({ pressed }) => [{ opacity: pressed ? 0.6 : 1 }]}>
           <Feather name="arrow-left" size={24} color={colors.foreground} />
@@ -100,17 +85,13 @@ export default function IssScreen() {
         </Pressable>
       </View>
 
-      <ScrollView
-        contentContainerStyle={{ padding: 20, paddingBottom: 60 }}
+      <ScrollView contentContainerStyle={{ padding: 20, paddingBottom: 60 }}
         refreshControl={<RefreshControl refreshing={loading} onRefresh={load} tintColor={colors.primary} />}
-        showsVerticalScrollIndicator={false}
-      >
-        {/* Konum */}
+        showsVerticalScrollIndicator={false}>
         <View style={[styles.locCard, { borderColor: colors.border, backgroundColor: colors.card }]}>
           <Feather name="map-pin" size={16} color={colors.primary} />
           <Text style={[styles.locText, { color: colors.foreground }]}>
-            Konum: {obs.lat.toFixed(2)}°, {obs.lon.toFixed(2)}°
-            {!obsReal && " (varsayılan: Türkiye merkezi)"}
+            Konum: {obs.lat.toFixed(2)}°, {obs.lon.toFixed(2)}°{!obsReal && " (varsayılan: Türkiye merkezi)"}
           </Text>
         </View>
 
@@ -129,12 +110,11 @@ export default function IssScreen() {
           </View>
         ) : (
           <>
-            {/* Şu anki durum */}
             {now && (
               <View style={[styles.nowCard, { borderColor: visibleNow ? colors.accent : colors.border, backgroundColor: colors.card }]}>
                 <View style={styles.nowRow}>
                   <View style={{ flex: 1 }}>
-                    <Text style={[styles.nowLabel, { color: colors.mutedForeground }]}>ISS Canlı Konum (SGP4)</Text>
+                    <Text style={[styles.nowLabel, { color: colors.mutedForeground }]}>ISS Canlı Konum (SGP4){tle?.fromFallback ? " · yerleşik TLE" : ""}</Text>
                     <Text style={[styles.nowValue, { color: colors.foreground }]}>
                       {now.lat.toFixed(2)}°, {now.lon.toFixed(2)}° · {Math.round(now.altKm)} km
                     </Text>
@@ -153,7 +133,6 @@ export default function IssScreen() {
               </View>
             )}
 
-            {/* Geçişler */}
             <Text style={[styles.sectionTitle, { color: colors.foreground }]}>Sonraki 72 Saat — Görünür Geçişler</Text>
             {passes.length === 0 ? (
               <View style={[styles.center, { borderWidth: 1, borderColor: colors.border, borderRadius: 16, padding: 24 }]}>
@@ -166,15 +145,15 @@ export default function IssScreen() {
               passes.map((p, i) => (
                 <View key={i} style={[styles.passCard, { borderColor: colors.border, backgroundColor: colors.card }]}>
                   <View style={styles.passRow}>
-                    <Feather name=" sunrise " size={16} color={colors.warning} />
+                    <Feather name="sunrise" size={16} color={colors.warning} />
                     <View style={{ flex: 1 }}>
                       <Text style={[styles.passPeak, { color: colors.foreground }]}>
-                        Tepe: {fmtClock(p.peakMs)} · {p.maxEl.toFixed(0)}° yükselis
+                        Tepe: {fmtClock(p.peakMs)} · {p.maxEl.toFixed(0)}° yükseliş
                       </Text>
                       <Text style={[styles.muted, { color: colors.mutedForeground }]}>
                         Doğuş: {fmtClock(p.startMs)} → Batış: {fmtClock(p.endMs)} · Azimut: {p.azAtPeak.toFixed(0)}°
                       </Text>
-                      <Text style={[styles.mutedSmall, { color: colors.mutedForeground }]}>{fmtTime(p.peakMs)}</Text>
+                      <Text style={[styles.mutedSmall, { color: colors.mutedForeground }]}>{fmtDay(p.peakMs)}</Text>
                     </View>
                     <View style={[styles.badge, { backgroundColor: colors.primary + "22" }]}>
                       <Text style={[styles.badgeText, { color: colors.primary }]}>{((p.endMs - p.startMs) / 60000).toFixed(0)} dk</Text>
@@ -207,8 +186,4 @@ const styles = StyleSheet.create({
   nowValue: { fontSize: 17, fontFamily: "Inter_700Bold", marginTop: 2 },
   badge: { paddingHorizontal: 10, paddingVertical: 4, borderRadius: 8 },
   badgeText: { fontSize: 11, fontFamily: "Inter_700Bold" },
-  sectionTitle: { fontSize: 16, fontFamily: "Inter_700Bold", marginBottom: 12 },
-  passCard: { borderRadius: 14, borderWidth: 1, padding: 14, marginBottom: 10 },
-  passRow: { flexDirection: "row", alignItems: "center", gap: 10 },
-  passPeak: { fontSize: 14, fontFamily: "Inter_700Bold" },
-});
+  sectionTitle: { fontSize: 16, fontFamily: "Inter_700Bold", marginBottom: 12
