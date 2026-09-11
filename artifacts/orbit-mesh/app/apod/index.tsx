@@ -1,3 +1,6 @@
+// app/apod/index.tsx
+// NASA APOD — backend → NASA doğrudan fallback ile.
+
 import { Feather } from "@expo/vector-icons";
 import { router } from "expo-router";
 import React, { useEffect, useState } from "react";
@@ -14,7 +17,7 @@ import {
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 
 import { useColors } from "@/hooks/useColors";
-import { BACKEND_URL } from "@/lib/env";
+import { BACKEND_URL, NASA_API_KEY } from "@/lib/env";
 
 interface ApodData {
   date: string;
@@ -37,14 +40,32 @@ export default function ApodScreen() {
 
   useEffect(() => {
     void fetchApod();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   async function fetchApod() {
     try {
       setLoading(true);
-      const res = await fetch(`${BACKEND_URL}/api/apod`);
-      if (!res.ok) throw new Error("APOD alinamadi");
-      const json = await res.json();
+
+      // 1) Kendi backend'ini dene
+      let json: any = null;
+      try {
+        const res = await fetch(`${BACKEND_URL}/api/apod`);
+        if (res.ok) json = await res.json();
+      } catch {
+        /* NASA'ya düş */
+      }
+
+      // 2) NASA'ya doğrudan bağlan
+      if (!json?.url) {
+        const key = NASA_API_KEY || "DEMO_KEY";
+        const res = await fetch(
+          `https://api.nasa.gov/planetary/apod?api_key=${key}`
+        );
+        if (!res.ok) throw new Error("APOD alinamadi");
+        json = await res.json();
+      }
+
       setData(json);
       setError(false);
       if (json?.explanation) {
@@ -69,7 +90,7 @@ export default function ApodScreen() {
             {
               role: "system",
               content:
-                "Ortaokul öğrencisinin anlayacaği açık, doğal Türkçe ile aşağıdaki NASA astronomi açıklamasını çevir. Teknik terimleri yalın tut. SADECE çeviriyi döndür, başka açıklama ekleme.",
+                "Ortaokul öğrencisinin anlayacağı açık, doğal Türkçe ile aşağıdaki NASA astronomi açıklamasını çevir. Teknik terimleri yalın tut. SADECE çeviriyi döndür, başka açıklama ekleme.",
             },
             { role: "user", content: text.slice(0, 1200) },
           ],
@@ -98,7 +119,9 @@ export default function ApodScreen() {
           <Pressable onPress={() => router.back()} style={styles.backBtn}>
             <Feather name="chevron-left" size={24} color={colors.foreground} />
           </Pressable>
-          <Text style={[styles.title, { color: colors.foreground }]}>Günün Astronomi Fotoğrafı</Text>
+          <Text style={[styles.title, { color: colors.foreground }]}>
+            Günün Astronomi Fotoğrafı
+          </Text>
           <View style={{ width: 32 }} />
         </View>
 
@@ -113,17 +136,34 @@ export default function ApodScreen() {
             APOD verisi alınamadı.
           </Text>
         ) : (
-          <View style={[styles.card, { backgroundColor: colors.card, borderColor: colors.border }]}>
+          <View
+            style={[
+              styles.card,
+              { backgroundColor: colors.card, borderColor: colors.border },
+            ]}
+          >
             {data.media_type === "image" && data.url ? (
-              <Image source={{ uri: data.url }} style={styles.image} resizeMode="cover" />
+              <Image
+                source={{ uri: data.url }}
+                style={styles.image}
+                resizeMode="cover"
+              />
             ) : (
-              <View style={[styles.videoPlaceholder, { backgroundColor: colors.border }]}>
+              <View
+                style={[styles.videoPlaceholder, { backgroundColor: colors.border }]}
+              >
                 <Feather name="film" size={32} color={colors.primary} />
-                <Text style={{ color: colors.mutedForeground, marginTop: 8 }}>Video içeriği</Text>
+                <Text style={{ color: colors.mutedForeground, marginTop: 8 }}>
+                  Video içeriği
+                </Text>
               </View>
             )}
-            <Text style={[styles.date, { color: colors.mutedForeground }]}>{data.date}</Text>
-            <Text style={[styles.cardTitle, { color: colors.foreground }]}>{data.title}</Text>
+            <Text style={[styles.date, { color: colors.mutedForeground }]}>
+              {data.date}
+            </Text>
+            <Text style={[styles.cardTitle, { color: colors.foreground }]}>
+              {data.title}
+            </Text>
             {translating ? (
               <ActivityIndicator color={colors.primary} style={{ marginVertical: 12 }} />
             ) : (
