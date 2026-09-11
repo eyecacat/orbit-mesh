@@ -3,3 +3,4 @@
 - [ORBIT-MESH backend URL](orbit-mesh-backend-url.md) — Use `EXPO_PUBLIC_DOMAIN` in dev to hit the local API server and avoid CORS; fall back to Vercel in production.
 - [Turkish satellite TLE sources](orbit-mesh-tle-sources.md) — Celestrak CATNR can be unreliable; verified NORAD IDs from geo/resource groups and a group fallback in the proxy.
 - [NASA DONKI rate-limit](nasa-donki-rate-limit.md) — DEMO_KEY returns 429; production needs a real NASA_API_KEY, backend caches and retries.
+- [Expo hoisted CLI workflow](expo-hoisted-cli.md) — Hoisted pnpm installs may require artifact scripts to invoke the workspace-root Expo CLI directly.

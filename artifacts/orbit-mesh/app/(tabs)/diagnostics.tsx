@@ -1,13 +1,9 @@
-// app/(tabs)/diagnostics.tsx
-// ORBIT-MESH — Analiz İstasyonu (V2.2 tek-anten firmware ile uyumlu)
-// DÜZELTME: BleContext'te `connectedDevice` YOK, doğrusu `connectedDevices` (dizi).
-// Eski kod undefined okuduğu için BLE bağlı olsa bile "bekleniyor" gösteriyordu.
-// Ayrıca V2.2 firmware'de wave/motion alanları yok; grafikler gerçek alanlara
-// (vlf_amp, sch_hz, b6_10) bağlandı ve bant-enerjisi sekmesi eklendi.
+// ORBIT-MESH — Bilimsel Analiz İstasyonu
+// Gerçek BLE telemetrisi + NOAA uzay havası ile öğrenci araştırma ekranı.
 
 import { Feather } from "@expo/vector-icons";
 import { router } from "expo-router";
-import React, { useEffect, useMemo, useRef, useState } from "react";
+import React, { useMemo, useState } from "react";
 import {
   Dimensions,
   Platform,
@@ -22,387 +18,566 @@ import { useSafeAreaInsets } from "react-native-safe-area-context";
 
 import { useBle } from "@/context/BleContext";
 import { useColors } from "@/hooks/useColors";
-import { OrbitMeshTelemetry } from "@/utils/telemetryParser";
+import { useSpaceWeather } from "@/hooks/useSpaceWeather";
+import type { OrbitMeshTelemetry } from "@/utils/telemetryParser";
 
-const screenWidth = Dimensions.get("window").width - 32;
-const HISTORY_LEN = 20;
+const chartWidth = Dimensions.get("window").width - 64;
+const HISTORY_LIMIT = 24;
 
-type ChartKey = "vlf" | "schumann" | "band";
-type SelfTestState = "OK" | "WARN" | "ERROR" | "PENDING";
+type AnalysisMode = "earth" | "signal" | "space";
+
+const modeMeta: Record<
+  AnalysisMode,
+  { label: string; icon: keyof typeof Feather.glyphMap; description: string }
+> = {
+  earth: {
+    label: "Dünya & İyonosfer",
+    icon: "globe",
+    description: "Yerel VLF ve Schumann ölçümünü incele",
+  },
+  signal: {
+    label: "Sinyal & Mesh",
+    icon: "activity",
+    description: "Anomaliyi ve düğüm güvenilirliğini araştır",
+  },
+  space: {
+    label: "Uzay Havası",
+    icon: "sun",
+    description: "NOAA verisini yerel ölçümle bağlama oturt",
+  },
+};
+
+const studyTools: {
+  title: string;
+  description: string;
+  icon: keyof typeof Feather.glyphMap;
+  route: string;
+  colorKey: "primary" | "accent" | "secondary" | "solar";
+}[] = [
+  {
+    title: "İyonosfer Laboratuvarı",
+    description: "Gerçek VLF bantlarını karşılaştır ve hipotez kur",
+    icon: "radio",
+    route: "/iyonosfer",
+    colorKey: "primary",
+  },
+  {
+    title: "Yörünge Gözlemi",
+    description: "Uydu geçişlerini ve gözlem pencerelerini incele",
+    icon: "crosshair",
+    route: "/uydular",
+    colorKey: "accent",
+  },
+  {
+    title: "Uzay Havası Günlüğü",
+    description: "Kp, güneş rüzgârı ve X-ışını verilerini izle",
+    icon: "sun",
+    route: "/space-weather-integration",
+    colorKey: "solar",
+  },
+  {
+    title: "Gözlem Koçu",
+    description: "Teleskop veya çıplak göz gözlemi için plan oluştur",
+    icon: "eye",
+    route: "/gokyuzu-kocu",
+    colorKey: "secondary",
+  },
+];
+
+function valueOrDash(value: number | null | undefined, digits = 1, suffix = "") {
+  return typeof value === "number" && Number.isFinite(value)
+    ? `${value.toFixed(digits)}${suffix}`
+    : "—";
+}
+
+function statusColor(
+  state: string | undefined,
+  colors: ReturnType<typeof useColors>
+) {
+  switch (state) {
+    case "QUIET":
+    case "Normal":
+      return colors.accent;
+    case "WATCH":
+    case "Şüpheli":
+      return colors.primary;
+    case "ACTIVE":
+    case "DISTURBED":
+    case "Yüksek":
+      return colors.warning;
+    case "Kritik":
+      return colors.danger;
+    default:
+      return colors.mutedForeground;
+  }
+}
+
+function SectionHeading({
+  icon,
+  title,
+  description,
+  colors,
+}: {
+  icon: keyof typeof Feather.glyphMap;
+  title: string;
+  description?: string;
+  colors: ReturnType<typeof useColors>;
+}) {
+  return (
+    <View style={styles.sectionHeading}>
+      <View style={[styles.sectionIcon, { backgroundColor: colors.primary + "1c" }]}>
+        <Feather name={icon} size={17} color={colors.primary} />
+      </View>
+      <View style={styles.sectionHeadingText}>
+        <Text style={[styles.sectionTitle, { color: colors.foreground }]}>{title}</Text>
+        {description ? (
+          <Text style={[styles.sectionDescription, { color: colors.mutedForeground }]}>
+            {description}
+          </Text>
+        ) : null}
+      </View>
+    </View>
+  );
+}
+
+function MetricTile({
+  label,
+  value,
+  detail,
+  color,
+  colors,
+}: {
+  label: string;
+  value: string;
+  detail?: string;
+  color?: string;
+  colors: ReturnType<typeof useColors>;
+}) {
+  return (
+    <View style={[styles.metricTile, { backgroundColor: colors.cardBright, borderColor: colors.border }]}>
+      <Text style={[styles.metricLabel, { color: colors.mutedForeground }]}>{label}</Text>
+      <Text style={[styles.metricValue, { color: color ?? colors.foreground }]}>{value}</Text>
+      {detail ? <Text style={[styles.metricDetail, { color: colors.mutedForeground }]}>{detail}</Text> : null}
+    </View>
+  );
+}
+
+function ProgressRow({
+  label,
+  value,
+  color,
+  colors,
+}: {
+  label: string;
+  value: number;
+  color: string;
+  colors: ReturnType<typeof useColors>;
+}) {
+  const safeValue = Math.max(0, Math.min(100, value));
+  return (
+    <View style={styles.progressRow}>
+      <View style={styles.progressLabelRow}>
+        <Text style={[styles.progressLabel, { color: colors.mutedForeground }]}>{label}</Text>
+        <Text style={[styles.progressValue, { color: colors.foreground }]}>{Math.round(safeValue)}</Text>
+      </View>
+      <View style={[styles.progressTrack, { backgroundColor: colors.muted }]}>
+        <View style={[styles.progressFill, { width: `${safeValue}%`, backgroundColor: color }]} />
+      </View>
+    </View>
+  );
+}
 
 export default function DiagnosticsScreen() {
   const colors = useColors();
   const insets = useSafeAreaInsets();
   const topPad = Platform.OS === "web" ? 67 : insets.top;
+  const [mode, setMode] = useState<AnalysisMode>("earth");
 
-  const { connectedDevices, latestTelemetry, anomalyScore, consensus, pqcStatus, meshNodes } =
-    useBle();
+  const {
+    connectedDevices,
+    latestTelemetry,
+    telemetry,
+    anomalyScore,
+    consensus,
+    pqcStatus,
+    meshNodes,
+  } = useBle();
+  const { data: spaceWeather, loading: spaceWeatherLoading, error: spaceWeatherError } = useSpaceWeather();
 
   const tele = latestTelemetry as OrbitMeshTelemetry | null;
-  const activeDevice = connectedDevices[0] ?? null;
-  const isConnected = connectedDevices.length > 0 && !!tele;
+  const isConnected = connectedDevices.length > 0;
+  const hasTelemetry = !!tele;
+  const history = useMemo(
+    () => telemetry.slice(0, HISTORY_LIMIT).reverse() as OrbitMeshTelemetry[],
+    [telemetry]
+  );
 
-  // Canlı geçmiş: BleContext'teki telemetry akışından son N örnek
-  const [history, setHistory] = useState<OrbitMeshTelemetry[]>([]);
-  const lastTsRef = useRef(0);
-  useEffect(() => {
-    if (!tele || tele.receivedAt === lastTsRef.current) return;
-    lastTsRef.current = tele.receivedAt;
-    setHistory((prev) => [...prev.slice(-(HISTORY_LEN - 1)), tele]);
-  }, [tele]);
-
-  const [activeChart, setActiveChart] = useState<ChartKey>("vlf");
-  const series = useMemo(() => {
-    const pick = (fn: (t: OrbitMeshTelemetry) => number) =>
-      history.map(fn).slice(-12);
-    const labels = history.slice(-12).map((_, i) => `${i + 1}`);
+  const chartSeries = useMemo(() => {
+    const labels = history.map((item) =>
+      new Date(item.receivedAt).toLocaleTimeString("tr-TR", {
+        hour: "2-digit",
+        minute: "2-digit",
+      })
+    );
     return {
-      vlf: { data: pick((t) => t.vlf_amp), labels },
-      schumann: { data: pick((t) => t.sch_hz), labels },
-      band: { data: pick((t) => t.b6_10), labels },
+      vlf: { labels, data: history.map((item) => item.vlf_amp) },
+      schumann: { labels, data: history.map((item) => item.sch_hz) },
+      bands: { labels, data: history.map((item) => item.b6_10) },
     };
   }, [history]);
 
-  const chartMeta: Record<ChartKey, { label: string; color: string; unit: string }> = {
-    vlf: { label: "VLF Genlik", color: "#f472b6", unit: "ADC" },
-    schumann: { label: "Schumann (Hz)", color: "#60a5fa", unit: "Hz" },
-    band: { label: "6–10 Hz Bant Enerjisi", color: "#00E5B0", unit: "" },
-  };
-  const meta = chartMeta[activeChart];
+  const activeChart =
+    mode === "earth"
+      ? chartSeries.vlf
+      : mode === "signal"
+      ? chartSeries.bands
+      : chartSeries.schumann;
+  const activeChartLabel =
+    mode === "earth" ? "VLF genlik geçmişi" : mode === "signal" ? "6–10 Hz bant enerjisi" : "Schumann frekans geçmişi";
+  const activeChartUnit = mode === "earth" ? " ADC" : mode === "signal" ? "" : " Hz";
 
-  const selfTestItems = useMemo(() => {
-    const items: { key: string; label: string; state: SelfTestState; detail: string }[] = [];
-    items.push({
-      key: "ble",
-      label: "BLE Bağlantısı",
-      state: connectedDevices.length > 0 ? "OK" : "ERROR",
-      detail:
-        connectedDevices.length > 0
-          ? `${connectedDevices.length} düğüm: ${connectedDevices
-              .map((d) => d.name ?? d.id)
-              .join(", ")}`
-          : "Bağlı düğüm yok",
-    });
-    items.push({
-      key: "telemetry",
-      label: "Telemetri Akışı",
-      state: tele ? "OK" : connectedDevices.length > 0 ? "PENDING" : "ERROR",
-      detail: tele ? `${Math.round((Date.now() - tele.receivedAt) / 1000)} sn önce güncellendi` : "Veri bekleniyor",
-    });
-    items.push({
-      key: "adc",
-      label: "VLF ADC Girişi",
-      state: !tele ? "PENDING" : tele.fault ? "ERROR" : (tele.vlf_amp ?? 0) > 1 ? "OK" : "WARN",
-      detail: !tele ? "—" : tele.fault ? "Sinyal arızası (INPUT_FAULT)" : `Amp: ${tele.vlf_amp.toFixed(1)}`,
-    });
-    items.push({
-      key: "noise",
-      label: "Gürültü Seviyesi",
-      state: !tele ? "PENDING" : tele.mains ? "WARN" : "OK",
-      detail: !tele ? "—" : tele.mains ? "50 Hz şebeke gürültüsü" : "Temiz",
-    });
-    items.push({
-      key: "sch",
-      label: "Schumann Rezonansı",
-      state: !tele ? "PENDING" : tele.sch_active ? "OK" : "WARN",
-      detail: !tele ? "—" : tele.sch_active ? `${tele.sch_hz.toFixed(2)} Hz aktif` : "Sinyal zayıf",
-    });
-    items.push({
-      key: "sq",
-      label: "Sinyal Kalitesi",
-      state: !tele ? "PENDING" : tele.sq > 40 ? "OK" : tele.sq > 20 ? "WARN" : "ERROR",
-      detail: !tele ? "—" : `SQ: ${tele.sq.toFixed(0)} dB`,
-    });
-    return items;
-  }, [connectedDevices, tele]);
+  const signalFinding = !tele
+    ? "Gerçek ölçüm bekleniyor."
+    : tele.fault
+    ? "ADC girişinde arıza işareti var. Önce bağlantı ve elektrot yerleşimini kontrol edin."
+    : tele.mains
+    ? "50 Hz şebeke etkisi görülüyor. Aynı deneyi güç kaynağı ve ortam değiştirerek tekrarlayın."
+    : tele.sch_active
+    ? `Schumann bandı aktif (${tele.sch_hz.toFixed(2)} Hz). VLF genliğini zaman ve ortam notlarıyla karşılaştırın.`
+    : "Schumann bandı bu örnekte aktif değil. Daha uzun bir gözlem serisi toplayın.";
 
-  const stateColor =
-    (tele?.state ?? "") === "QUIET"
-      ? colors.accent
-      : (tele?.state ?? "") === "WATCH"
-      ? colors.primary
-      : (tele?.state ?? "") === "ACTIVE" || (tele?.state ?? "") === "DISTURBED"
-      ? colors.warning
-      : colors.danger;
+  const teleAge = tele ? Math.max(0, Math.round((Date.now() - tele.receivedAt) / 1000)) : null;
+  const stateTone = statusColor(tele?.state, colors);
 
   return (
     <View style={[styles.root, { backgroundColor: colors.background, paddingTop: topPad }]}>
-      <ScrollView contentContainerStyle={{ paddingBottom: 120 }} showsVerticalScrollIndicator={false}>
-        {/* Başlık */}
+      <ScrollView
+        contentContainerStyle={{ paddingBottom: Platform.OS === "web" ? 96 : 120 }}
+        showsVerticalScrollIndicator={false}
+      >
         <View style={styles.header}>
-          <Text style={[styles.title, { color: colors.foreground }]}>Analiz İstasyonu</Text>
+          <View style={styles.eyebrowRow}>
+            <View style={[styles.liveDot, { backgroundColor: hasTelemetry ? colors.accent : colors.warning }]} />
+            <Text style={[styles.eyebrow, { color: colors.mutedForeground }]}>
+              ASTRONOMİ VE UZAY TEKNOLOJİLERİ
+            </Text>
+          </View>
+          <Text style={[styles.title, { color: colors.foreground }]}>Bilimsel Analiz</Text>
           <Text style={[styles.subtitle, { color: colors.mutedForeground }]}>
-            Gerçek Zamanlı Uzay Gözlem Verileri
+            Ölç, karşılaştır, açıkla: Dünya’yı ve uzayla ilişkisini gerçek verilerle araştır.
           </Text>
         </View>
 
-        {/* Bağlantı durumu */}
         <View
           style={[
-            styles.statusBanner,
+            styles.connectionBanner,
             {
-              backgroundColor: isConnected ? colors.accent + "22" : colors.warning + "22",
-              borderColor: isConnected ? colors.accent : colors.warning,
+              backgroundColor: isConnected ? colors.accent + "16" : colors.warning + "16",
+              borderColor: isConnected ? colors.accent + "70" : colors.warning + "70",
             },
           ]}
         >
-          <Feather name="bluetooth" size={18} color={isConnected ? colors.accent : colors.warning} />
-          <Text
-            style={[styles.statusText, { color: isConnected ? colors.accent : colors.warning }]}
-          >
-            {isConnected
-              ? `${activeDevice?.name ?? tele?.nodeId} bağlı — canlı veri akışı aktif${
-                  connectedDevices.length > 1 ? ` (${connectedDevices.length} düğüm)` : ""
-                }`
-              : "BLE bağlantısı bekleniyor"}
-          </Text>
+          <View style={[styles.connectionIcon, { backgroundColor: isConnected ? colors.accent + "22" : colors.warning + "22" }]}>
+            <Feather name="bluetooth" size={18} color={isConnected ? colors.accent : colors.warning} />
+          </View>
+          <View style={styles.connectionCopy}>
+            <Text style={[styles.connectionTitle, { color: colors.foreground }]}>
+              {isConnected ? "BLE gözlem düğümü bağlı" : "BLE gözlem düğümü bağlı değil"}
+            </Text>
+            <Text style={[styles.connectionDetail, { color: colors.mutedForeground }]}>
+              {hasTelemetry
+                ? `${tele?.nodeId ?? "ORBIT-MESH"} · son paket ${teleAge} sn önce`
+                : "Grafikler ve bulgular yalnızca gerçek telemetri geldiğinde açılır."}
+            </Text>
+          </View>
+          {!isConnected ? (
+            <Pressable
+              testID="diagnostics-connect-ble"
+              onPress={() => router.push("/ble" as any)}
+              style={({ pressed }) => [styles.smallAction, { backgroundColor: colors.primary, opacity: pressed ? 0.75 : 1 }]}
+            >
+              <Text style={[styles.smallActionText, { color: colors.primaryForeground }]}>Bağlan</Text>
+            </Pressable>
+          ) : null}
         </View>
 
-        {isConnected && tele ? (
-          <>
-            {/* Canlı metrikler — V2.2 firmware alanları */}
-            <View style={styles.metricsGrid}>
+        <View style={styles.modeScroller}>
+          <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.modeContent}>
+            {(Object.keys(modeMeta) as AnalysisMode[]).map((key) => {
+              const item = modeMeta[key];
+              const selected = mode === key;
+              return (
+                <Pressable
+                  key={key}
+                  testID={`diagnostics-mode-${key}`}
+                  onPress={() => setMode(key)}
+                  style={[
+                    styles.modePill,
+                    {
+                      backgroundColor: selected ? colors.primary + "22" : colors.card,
+                      borderColor: selected ? colors.primary : colors.border,
+                    },
+                  ]}
+                >
+                  <Feather name={item.icon} size={15} color={selected ? colors.primary : colors.mutedForeground} />
+                  <Text style={[styles.modeLabel, { color: selected ? colors.primary : colors.mutedForeground }]}>
+                    {item.label}
+                  </Text>
+                </Pressable>
+              );
+            })}
+          </ScrollView>
+        </View>
+
+        {!hasTelemetry ? (
+          <View style={[styles.emptyCard, { backgroundColor: colors.card, borderColor: colors.border }]}>
+            <View style={[styles.emptyIcon, { backgroundColor: colors.primary + "1c" }]}>
+              <Feather name="bar-chart-2" size={26} color={colors.primary} />
+            </View>
+            <Text style={[styles.emptyTitle, { color: colors.foreground }]}>Bilimsel ölçüm alanı hazır</Text>
+            <Text style={[styles.emptyDescription, { color: colors.mutedForeground }]}>
+              ORBIT-MESH düğümünü bağladığınızda VLF, Schumann rezonansı, bant enerjisi,
+              iyonosferik hareket ve sinyal kalitesi burada gerçek zamanlı analiz edilir.
+            </Text>
+            <View style={styles.emptyList}>
               {[
-                { label: "Durum", value: tele.state, color: stateColor },
-                { label: "VLF Frekans", value: `${tele.vlf_hz.toFixed(2)} Hz` },
-                { label: "VLF Genlik", value: tele.vlf_amp.toFixed(1) },
-                { label: "Sinyal Kalite", value: `${tele.sq.toFixed(0)} dB` },
-                { label: "Schumann", value: `${tele.sch_hz.toFixed(2)} Hz`, sub: tele.sch_active ? "Aktif" : "Pasif" },
-                { label: "Schumann Oran", value: tele.sch_ratio.toFixed(3) },
-                { label: "Aktivite", value: tele.act.toFixed(2) },
-                { label: "ADS1115", value: `${tele.ads1.toFixed(3)} V` },
-                { label: "Bant 6–10 Hz", value: tele.b6_10.toFixed(3) },
-                { label: "Bant 17–25 Hz", value: tele.b17_25.toFixed(3) },
-                { label: "Şebeke 45–55 Hz", value: tele.b45_55.toFixed(3) },
-                { label: "Batarya", value: `%${tele.bat.toFixed(0)}`, color: tele.bat > 20 ? colors.accent : colors.danger },
-              ].map((m, i) => (
-                <View key={i} style={[styles.metricCard, { borderColor: colors.border, backgroundColor: colors.card }]}>
-                  <Text style={[styles.metricLabel, { color: colors.mutedForeground }]}>{m.label}</Text>
-                  <Text style={[styles.metricValue, { color: m.color ?? colors.foreground }]}>{m.value}</Text>
-                  {m.sub ? <Text style={[styles.metricSub, { color: colors.mutedForeground }]}>{m.sub}</Text> : null}
+                "Dünya’nın doğal elektromanyetik ortamını gözlemle",
+                "Açık NOAA verisini yerel ölçümle karşılaştır",
+                "Hipotez kur, gözlemi tekrarla ve bulguyu açıkla",
+              ].map((item) => (
+                <View key={item} style={styles.emptyListRow}>
+                  <Feather name="check" size={14} color={colors.accent} />
+                  <Text style={[styles.emptyListText, { color: colors.foreground }]}>{item}</Text>
                 </View>
               ))}
             </View>
-
-            {/* Anomali + consensus */}
-            {anomalyScore && (
-              <View
-                style={[
-                  styles.anomalyCard,
-                  {
-                    borderColor: anomalyScore.total >= 50 ? colors.danger : colors.border,
-                    backgroundColor: anomalyScore.total >= 50 ? colors.danger + "14" : colors.card,
-                  },
-                ]}
-              >
-                <View style={styles.anomalyHeader}>
-                  <Feather
-                    name={anomalyScore.total >= 50 ? "alert-triangle" : "check-circle"}
-                    size={20}
-                    color={anomalyScore.total >= 50 ? colors.danger : colors.accent}
-                  />
-                  <Text style={[styles.anomalyTitle, { color: colors.foreground }]}>Anomali Skoru</Text>
-                  <Text
-                    style={[
-                      styles.anomalyValue,
-                      {
-                        color:
-                          anomalyScore.total >= 70
-                            ? colors.danger
-                            : anomalyScore.total >= 50
-                            ? colors.warning
-                            : colors.accent,
-                      },
-                    ]}
-                  >
-                    {Math.round(anomalyScore.total)}
-                  </Text>
-                  <Text
-                    style={[
-                      styles.anomalyLevel,
-                      {
-                        color:
-                          anomalyScore.total >= 70
-                            ? colors.danger
-                            : anomalyScore.total >= 50
-                            ? colors.warning
-                            : colors.accent,
-                      },
-                    ]}
-                  >
-                    {anomalyScore.level}
-                  </Text>
-                </View>
-                <Text style={[styles.consensusText, { color: colors.mutedForeground }]}>
-                  Mesh Consensus: {consensus.status} ({consensus.anomalyCount}/{consensus.totalNodes} düğüm) —{" "}
-                  {router ? "" : ""}
-                  {consensus.status === "Doğrulanmış"
-                    ? "anomali ağ genelinde doğrulandı"
-                    : consensus.status === "Şüpheli"
-                    ? "birden fazla düğüm aynı yönde — izlemeye devam"
-                    : "ağda doğrulama yok — yerel ölçüm olabilir"}
-                </Text>
-              </View>
-            )}
-
-            {/* PQC kartı — detay ekranına gider */}
             <Pressable
-              onPress={() => router.push("/pqc")}
-              style={({ pressed }) => [{ opacity: pressed ? 0.7 : 1 }]}
+              testID="diagnostics-empty-ble"
+              onPress={() => router.push("/ble" as any)}
+              style={({ pressed }) => [styles.primaryButton, { backgroundColor: colors.primary, opacity: pressed ? 0.78 : 1 }]}
             >
-              <View style={[styles.pqcCard, { borderColor: colors.border, backgroundColor: colors.card }]}>
-                <View style={{ flexDirection: "row", alignItems: "center", gap: 8 }}>
-                  <Feather name="shield" size={18} color={colors.mesh} />
-                  <Text style={[styles.pqcTitle, { color: colors.foreground, flex: 1 }]}>
-                    PQC Kuantum Güvenlik
+              <Feather name="bluetooth" size={16} color={colors.primaryForeground} />
+              <Text style={[styles.primaryButtonText, { color: colors.primaryForeground }]}>BLE bağlantısını aç</Text>
+            </Pressable>
+          </View>
+        ) : null}
+
+        {hasTelemetry && tele ? (
+          <>
+            <View style={[styles.sectionCard, { backgroundColor: colors.card, borderColor: colors.border }]}>
+              <SectionHeading
+                icon={modeMeta[mode].icon}
+                title={modeMeta[mode].label}
+                description={modeMeta[mode].description}
+                colors={colors}
+              />
+
+              {mode === "earth" ? (
+                <>
+                  <View style={styles.metricGrid}>
+                    <MetricTile label="VLF frekansı" value={valueOrDash(tele.vlf_hz, 2, " Hz")} colors={colors} />
+                    <MetricTile label="VLF genliği" value={valueOrDash(tele.vlf_amp, 1, " ADC")} color={colors.primary} colors={colors} />
+                    <MetricTile
+                      label="Schumann"
+                      value={valueOrDash(tele.sch_hz, 2, " Hz")}
+                      detail={tele.sch_active ? "Aktif" : "Pasif"}
+                      color={tele.sch_active ? colors.accent : colors.warning}
+                      colors={colors}
+                    />
+                    <MetricTile label="Schumann oranı" value={valueOrDash(tele.sch_ratio, 3)} colors={colors} />
+                    <MetricTile label="6–10 Hz bant" value={valueOrDash(tele.b6_10, 3)} colors={colors} />
+                    <MetricTile label="Şebeke bandı" value={valueOrDash(tele.b45_55, 3)} detail={tele.mains ? "Dikkat" : "Düşük"} color={tele.mains ? colors.warning : colors.accent} colors={colors} />
+                  </View>
+                  <Text style={[styles.findingLabel, { color: colors.primary }]}>GÖZLEM NOTU</Text>
+                  <Text style={[styles.findingText, { color: colors.foreground }]}>{signalFinding}</Text>
+                </>
+              ) : null}
+
+              {mode === "signal" ? (
+                <>
+                  <View style={styles.metricGrid}>
+                    <MetricTile label="Uzay durumu" value={tele.state} color={stateTone} colors={colors} />
+                    <MetricTile label="Sinyal kalitesi" value={valueOrDash(tele.sq, 0, " / 100")} color={tele.sq >= 40 ? colors.accent : colors.warning} colors={colors} />
+                    <MetricTile label="İyonosferik hız" value={valueOrDash(tele.mot_vel, 2, " km/s")} colors={colors} />
+                    <MetricTile label="Hareket güveni" value={valueOrDash(tele.mot_conf, 0, " %")} colors={colors} />
+                    <MetricTile label="Dalga kaynağı" value={tele.wave_src || "UNKNOWN"} colors={colors} />
+                    <MetricTile label="Tutarlılık" value={valueOrDash(tele.wave_coh, 2)} colors={colors} />
+                  </View>
+                  {anomalyScore ? (
+                    <View style={styles.analysisBlock}>
+                      <View style={styles.scoreHeader}>
+                        <Text style={[styles.scoreTitle, { color: colors.foreground }]}>Anomali bileşenleri</Text>
+                        <Text style={[styles.scoreValue, { color: statusColor(anomalyScore.level, colors) }]}>
+                          {Math.round(anomalyScore.total)} · {anomalyScore.level}
+                        </Text>
+                      </View>
+                      <ProgressRow label="VLF" value={anomalyScore.vlfScore} color={colors.primary} colors={colors} />
+                      <ProgressRow label="Schumann" value={anomalyScore.schumannScore} color={colors.accent} colors={colors} />
+                      <ProgressRow label="Hareket" value={anomalyScore.motionScore} color={colors.secondary} colors={colors} />
+                      <ProgressRow label="Gürültü / hata" value={anomalyScore.noiseScore} color={colors.warning} colors={colors} />
+                    </View>
+                  ) : null}
+                  <Text style={[styles.findingLabel, { color: colors.primary }]}>ARAŞTIRMA SORUSU</Text>
+                  <Text style={[styles.findingText, { color: colors.foreground }]}>
+                    {tele.anomaly
+                      ? "Anomali işareti hangi bantta belirginleşiyor? Aynı koşullarda tekrarlı ölçüm alıp kaynak ile sonucu ayırın."
+                      : "Aynı gözlem koşullarında farklı zamanlarda ölçüm alarak sinyal kalitesinin bulguyu nasıl etkilediğini inceleyin."}
                   </Text>
-                  <Feather name="chevron-right" size={18} color={colors.mutedForeground} />
+                </>
+              ) : null}
+
+              {mode === "space" ? (
+                <View>
+                  {spaceWeatherLoading && !spaceWeather ? (
+                    <View style={styles.inlineState}>
+                      <Feather name="loader" size={16} color={colors.primary} />
+                      <Text style={[styles.inlineStateText, { color: colors.mutedForeground }]}>NOAA SWPC verisi alınıyor…</Text>
+                    </View>
+                  ) : spaceWeatherError && !spaceWeather ? (
+                    <View style={[styles.inlineState, { backgroundColor: colors.warning + "12" }]}>
+                      <Feather name="wifi-off" size={16} color={colors.warning} />
+                      <Text style={[styles.inlineStateText, { color: colors.warning }]}>{spaceWeatherError}</Text>
+                    </View>
+                  ) : spaceWeather ? (
+                    <>
+                      <View style={styles.metricGrid}>
+                        <MetricTile label="NOAA Kp" value={valueOrDash(spaceWeather.kpIndex, 1)} detail={spaceWeather.kpStatus} color={spaceWeather.kpIndex >= 5 ? colors.warning : colors.accent} colors={colors} />
+                        <MetricTile label="Güneş rüzgârı" value={valueOrDash(spaceWeather.solarWind?.speed, 0, " km/s")} colors={colors} />
+                        <MetricTile label="Yoğunluk" value={valueOrDash(spaceWeather.solarWind?.density, 1, " p/cm³")} colors={colors} />
+                        <MetricTile label="Bz" value={valueOrDash(spaceWeather.solarWind?.bz, 2, " nT")} color={(spaceWeather.solarWind?.bz ?? 0) < 0 ? colors.warning : colors.accent} colors={colors} />
+                        <MetricTile label="GOES X-ray" value={spaceWeather.xray?.class ?? "—"} detail={spaceWeather.xray ? valueOrDash(spaceWeather.xray.flux, 2) : undefined} colors={colors} />
+                        <MetricTile label="Proton akısı" value={valueOrDash(spaceWeather.proton?.flux, 2)} detail={spaceWeather.proton?.status ?? "—"} colors={colors} />
+                      </View>
+                      <View style={[styles.contextCallout, { backgroundColor: colors.primary + "12", borderColor: colors.primary + "40" }]}>
+                        <Feather name="link" size={16} color={colors.primary} />
+                        <Text style={[styles.contextCalloutText, { color: colors.foreground }]}>
+                          NOAA Kp küresel uzay havasını, BLE ölçümü ise bulunduğunuz istasyondaki yerel elektromanyetik koşulları gösterir. Aynı zaman aralığında ikisini kaydetmek karşılaştırmalı araştırma için başlangıçtır.
+                        </Text>
+                      </View>
+                    </>
+                  ) : null}
                 </View>
-                <View style={styles.pqcGrid}>
-                  <View style={styles.pqcCell}>
-                    <Text style={[styles.pqcLabel, { color: colors.mutedForeground }]}>Durum</Text>
-                    <Text style={[styles.pqcValue, { color: (pqcStatus?.recentFailures ?? 0) > 0 ? colors.warning : colors.accent }]}>
-                      {(pqcStatus?.recentFailures ?? 0) > 0 ? "Müdahale" : "Güvende"}
+              ) : null}
+            </View>
+
+            {mode !== "space" && history.length >= 2 ? (
+              <View style={[styles.chartCard, { backgroundColor: colors.card, borderColor: colors.border }]}>
+                <View style={styles.chartTitleRow}>
+                  <View>
+                    <Text style={[styles.chartTitle, { color: colors.foreground }]}>{activeChartLabel}</Text>
+                    <Text style={[styles.chartSubtitle, { color: colors.mutedForeground }]}>
+                      Son {history.length} gerçek BLE paketi
                     </Text>
                   </View>
-                  <View style={styles.pqcCell}>
-                    <Text style={[styles.pqcLabel, { color: colors.mutedForeground }]}>Doğrulanan Paket</Text>
-                    <Text style={[styles.pqcValue, { color: colors.foreground }]}>
-                      {pqcStatus?.recentVerifications ?? 0}
-                    </Text>
-                  </View>
-                  <View style={styles.pqcCell}>
-                    <Text style={[styles.pqcLabel, { color: colors.mutedForeground }]}>Düğüm</Text>
-                    <Text style={[styles.pqcValue, { color: colors.foreground }]}>
-                      {pqcStatus?.pqcActiveNodes?.length ?? meshNodes.length}/{pqcStatus?.totalNodes ?? meshNodes.length}
-                    </Text>
+                  <View style={[styles.chartBadge, { backgroundColor: colors.accent + "18" }]}>
+                    <Feather name="radio" size={13} color={colors.accent} />
+                    <Text style={[styles.chartBadgeText, { color: colors.accent }]}>CANLI</Text>
                   </View>
                 </View>
-                <Text style={[styles.pqcSeed, { color: colors.mutedForeground }]} numberOfLines={1}>
-                  Seed: {tele.pqc_seed}
+                <LineChart
+                  data={{ labels: activeChart.labels, datasets: [{ data: activeChart.data }] }}
+                  width={chartWidth}
+                  height={190}
+                  yAxisSuffix={activeChartUnit}
+                  chartConfig={{
+                    backgroundColor: colors.card,
+                    backgroundGradientFrom: colors.card,
+                    backgroundGradientTo: colors.card,
+                    decimalPlaces: 1,
+                    color: () => mode === "signal" ? colors.accent : colors.primary,
+                    labelColor: () => colors.mutedForeground,
+                    strokeWidth: 2,
+                    propsForDots: { r: "3", strokeWidth: "1", stroke: colors.card },
+                    propsForBackgroundLines: { stroke: colors.border },
+                  }}
+                  bezier
+                  style={styles.chart}
+                />
+              </View>
+            ) : mode !== "space" ? (
+              <View style={[styles.chartEmpty, { backgroundColor: colors.card, borderColor: colors.border }]}>
+                <Feather name="trending-up" size={22} color={colors.mutedForeground} />
+                <Text style={[styles.chartEmptyTitle, { color: colors.foreground }]}>Grafik için seri toplanıyor</Text>
+                <Text style={[styles.chartEmptyText, { color: colors.mutedForeground }]}>
+                  En az iki gerçek telemetri paketi geldiğinde ölçüm geçmişi burada görselleştirilecek.
                 </Text>
               </View>
-            </Pressable>
+            ) : null}
 
-            {/* Canlı grafik */}
-            <View style={[styles.chartCard, { borderColor: colors.border, backgroundColor: colors.card }]}>
-              <View style={styles.chartHeader}>
-                <Text style={[styles.chartTitle, { color: colors.foreground }]}>{meta.label}</Text>
-                <View style={styles.chartTabs}>
-                  {(["vlf", "schumann", "band"] as ChartKey[]).map((key) => (
-                    <Pressable
-                      key={key}
-                      onPress={() => setActiveChart(key)}
-                      style={[
-                        styles.chartTab,
-                        { backgroundColor: activeChart === key ? colors.primary + "33" : "transparent" },
-                      ]}
-                    >
-                      <Text
-                        style={[
-                          styles.chartTabText,
-                          { color: activeChart === key ? colors.primary : colors.mutedForeground },
-                        ]}
-                      >
-                        {key === "vlf" ? "VLF" : key === "schumann" ? "Schumann" : "Bant"}
-                      </Text>
-                    </Pressable>
-                  ))}
-                </View>
-              </View>
-              <LineChart
-                data={{
-                  labels: series[activeChart].labels,
-                  datasets: [{ data: series[activeChart].data.length > 1 ? series[activeChart].data : [0, 0] }],
-                }}
-                width={screenWidth - 32}
-                height={180}
-                yAxisSuffix={meta.unit ? ` ${meta.unit}` : ""}
-                chartConfig={{
-                  backgroundColor: "transparent",
-                  backgroundGradientFrom: colors.card,
-                  backgroundGradientTo: colors.card,
-                  decimalPlaces: activeChart === "schumann" ? 2 : 1,
-                  color: () => meta.color,
-                  labelColor: () => colors.mutedForeground,
-                  style: { borderRadius: 12 },
-                  propsForDots: { r: "2" },
-                  propsForBackgroundLines: { stroke: colors.border },
-                }}
-                bezier
-                style={styles.chart}
-              />
-              <Text style={[styles.chartHint, { color: colors.mutedForeground }]}>
-                Son {history.length} telemetri paketi (~{Math.round((history.length * 0.9 * 10) / 10)} sn)
-              </Text>
-            </View>
-
-            {/* Sistem öz-testi */}
-            <View style={[styles.selfTestCard, { borderColor: colors.border, backgroundColor: colors.card }]}>
-              <Text style={[styles.selfTestTitle, { color: colors.foreground }]}>Sistem Öz-Testi</Text>
-              {selfTestItems.map((item) => {
-                const c =
-                  item.state === "OK"
-                    ? colors.accent
-                    : item.state === "WARN"
-                    ? colors.warning
-                    : item.state === "ERROR"
-                    ? colors.danger
-                    : colors.mutedForeground;
-                return (
-                  <View key={item.key} style={styles.selfTestRow}>
-                    <View style={styles.selfTestLeft}>
-                      <View style={[styles.selfTestDot, { backgroundColor: c }]} />
-                      <Text style={[styles.selfTestLabel, { color: colors.foreground }]}>{item.label}</Text>
-                    </View>
-                    <Text style={[styles.selfTestState, { color: c }]}>
-                      {item.state} · {item.detail}
-                    </Text>
-                  </View>
-                );
-              })}
-            </View>
-
-            {/* Düğüm listesi */}
-            {meshNodes.length > 0 && (
-              <View style={[styles.selfTestCard, { borderColor: colors.border, backgroundColor: colors.card }]}>
-                <Text style={[styles.selfTestTitle, { color: colors.foreground }]}>Mesh Düğümleri</Text>
-                {meshNodes.map((n) => (
-                  <View key={n.id} style={styles.selfTestRow}>
-                    <View style={styles.selfTestLeft}>
-                      <Feather name="radio" size={14} color={n.isConnected ? colors.accent : colors.mutedForeground} />
-                      <Text style={[styles.selfTestLabel, { color: colors.foreground }]}>{n.name ?? n.id}</Text>
-                    </View>
-                    <Text style={[styles.selfTestState, { color: colors.mutedForeground }]}>
-                      Skor: {Math.round(n.anomalyScore?.total ?? 0)}
-                      {typeof n.rssi === "number" ? ` · ${n.rssi} dBm` : ""}
-                    </Text>
+            <View style={[styles.healthCard, { backgroundColor: colors.card, borderColor: colors.border }]}>
+              <SectionHeading icon="check-circle" title="Gözlem güvenilirliği" description="Ölçümün ve mesh ağının mevcut durumu" colors={colors} />
+              <View style={styles.healthRows}>
+                {[
+                  { label: "ADC girişi", ok: !tele.fault, detail: tele.fault ? "INPUT_FAULT" : "Hazır" },
+                  { label: "Şebeke gürültüsü", ok: !tele.mains, detail: tele.mains ? "50 Hz etkisi" : "Düşük" },
+                  { label: "Sinyal kalitesi", ok: tele.sq >= 40, detail: `${Math.round(tele.sq)} / 100` },
+                  { label: "Mesh doğrulaması", ok: consensus.status === "Doğrulanmış" || consensus.totalNodes <= 1, detail: `${consensus.anomalyCount}/${consensus.totalNodes} düğüm` },
+                ].map((item) => (
+                  <View key={item.label} style={styles.healthRow}>
+                    <Feather name={item.ok ? "check-circle" : "alert-circle"} size={16} color={item.ok ? colors.accent : colors.warning} />
+                    <Text style={[styles.healthLabel, { color: colors.foreground }]}>{item.label}</Text>
+                    <Text style={[styles.healthDetail, { color: item.ok ? colors.accent : colors.warning }]}>{item.detail}</Text>
                   </View>
                 ))}
               </View>
-            )}
+              <Text style={[styles.pqcNote, { color: colors.mutedForeground }]}>
+                PQC durum kartı PoC seviyesindedir; üretim kriptografisi olarak yorumlanmamalıdır. Doğrulanan paket: {pqcStatus?.recentVerifications ?? 0}.
+              </Text>
+            </View>
           </>
-        ) : (
-          <View style={[styles.placeholderCard, { borderColor: colors.border, backgroundColor: colors.card }]}>
-            <Feather name="bluetooth" size={40} color={colors.mutedForeground} />
-            <Text style={[styles.placeholderTitle, { color: colors.foreground }]}>
-              Analiz için BLE bağlantısı gerekli
-            </Text>
-            <Text style={[styles.placeholderDesc, { color: colors.mutedForeground }]}>
-              ORBIT-MESH düğümünü bağlayarak gerçek VLF, Schumann ve uzay havası verilerini canlı izleyin.
-            </Text>
-            <Pressable
-              onPress={() => router.push("/ble" as any)}
-              style={({ pressed }) => [
-                styles.goToBleBtn,
-                { backgroundColor: colors.primary, opacity: pressed ? 0.8 : 1 },
-              ]}
-            >
-              <Feather name="bluetooth" size={16} color={colors.primaryForeground} />
-              <Text style={[styles.goToBleText, { color: colors.primaryForeground }]}>BLE'ye Git</Text>
-            </Pressable>
+        ) : null}
+
+        <View style={styles.toolsSection}>
+          <SectionHeading
+            icon="book-open"
+            title="Uzay çalışmaları"
+            description="Araştırma, gözlem ve modelleme için hazır çalışma alanları"
+            colors={colors}
+          />
+          <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.toolScroller}>
+            {studyTools.map((tool) => {
+              const accent = colors[tool.colorKey];
+              return (
+                <Pressable
+                  key={tool.title}
+                  testID={`diagnostics-tool-${tool.route.replace(/\W/g, "")}`}
+                  onPress={() => router.push(tool.route as any)}
+                  style={({ pressed }) => [
+                    styles.toolCard,
+                    { backgroundColor: colors.card, borderColor: colors.border, opacity: pressed ? 0.76 : 1 },
+                  ]}
+                >
+                  <View style={[styles.toolIcon, { backgroundColor: accent + "1c" }]}>
+                    <Feather name={tool.icon} size={19} color={accent} />
+                  </View>
+                  <Text style={[styles.toolTitle, { color: colors.foreground }]}>{tool.title}</Text>
+                  <Text style={[styles.toolDescription, { color: colors.mutedForeground }]}>{tool.description}</Text>
+                  <View style={styles.toolFooter}>
+                    <Text style={[styles.toolAction, { color: accent }]}>Çalışmayı aç</Text>
+                    <Feather name="arrow-up-right" size={14} color={accent} />
+                  </View>
+                </Pressable>
+              );
+            })}
+          </ScrollView>
+        </View>
+
+        {meshNodes.length > 0 ? (
+          <View style={[styles.meshCard, { backgroundColor: colors.card, borderColor: colors.border }]}>
+            <SectionHeading icon="share-2" title="Mesh gözlem ağı" description="Aynı olayı birden fazla düğümle doğrula" colors={colors} />
+            {meshNodes.slice(0, 4).map((node) => (
+                <View key={node.id} style={[styles.meshRow, { borderTopColor: colors.border }]}>
+                <View style={[styles.meshNodeDot, { backgroundColor: node.isConnected ? colors.accent : colors.mutedForeground }]} />
+                <Text style={[styles.meshNodeName, { color: colors.foreground }]} numberOfLines={1}>
+                  {node.name ?? node.id}
+                </Text>
+                <Text style={[styles.meshNodeStatus, { color: node.isConnected ? colors.accent : colors.mutedForeground }]}>
+                  {node.health}
+                </Text>
+              </View>
+            ))}
           </View>
-        )}
+        ) : null}
       </ScrollView>
     </View>
   );
@@ -410,47 +585,86 @@ export default function DiagnosticsScreen() {
 
 const styles = StyleSheet.create({
   root: { flex: 1 },
-  header: { paddingHorizontal: 20, marginBottom: 16 },
-  title: { fontSize: 24, fontFamily: "Inter_700Bold" },
-  subtitle: { fontSize: 14, fontFamily: "Inter_400Regular", marginTop: 4 },
-  statusBanner: { flexDirection: "row", alignItems: "center", gap: 10, borderRadius: 14, borderWidth: 1, padding: 14, marginHorizontal: 20, marginBottom: 16 },
-  statusText: { fontSize: 13, fontFamily: "Inter_500Medium", flex: 1 },
-  metricsGrid: { flexDirection: "row", flexWrap: "wrap", paddingHorizontal: 20, gap: 10, marginBottom: 16 },
-  metricCard: { width: "47%", flexGrow: 1, borderRadius: 14, borderWidth: 1, padding: 12, gap: 2 },
-  metricLabel: { fontSize: 11, fontFamily: "Inter_500Medium" },
-  metricValue: { fontSize: 20, fontFamily: "Inter_700Bold" },
-  metricSub: { fontSize: 11, fontFamily: "Inter_400Regular" },
-  anomalyCard: { marginHorizontal: 20, borderRadius: 16, borderWidth: 1, padding: 16, marginBottom: 16, gap: 4 },
-  anomalyHeader: { flexDirection: "row", alignItems: "center", gap: 8 },
-  anomalyTitle: { flex: 1, fontSize: 14, fontFamily: "Inter_700Bold" },
-  anomalyValue: { fontSize: 22, fontFamily: "Inter_700Bold" },
-  anomalyLevel: { fontSize: 15, fontFamily: "Inter_700Bold" },
-  consensusText: { fontSize: 12, fontFamily: "Inter_400Regular" },
-  pqcCard: { marginHorizontal: 20, borderRadius: 16, borderWidth: 1, padding: 16, marginBottom: 16, gap: 12 },
-  pqcTitle: { fontSize: 14, fontFamily: "Inter_700Bold" },
-  pqcGrid: { flexDirection: "row", gap: 10 },
-  pqcCell: { flex: 1, gap: 2 },
-  pqcLabel: { fontSize: 10, fontFamily: "Inter_500Medium" },
-  pqcValue: { fontSize: 16, fontFamily: "Inter_700Bold" },
-  pqcSeed: { fontSize: 11, fontFamily: "Inter_400Regular" },
-  chartCard: { marginHorizontal: 20, borderRadius: 16, borderWidth: 1, padding: 16, marginBottom: 16 },
-  chartHeader: { flexDirection: "row", alignItems: "center", justifyContent: "space-between", marginBottom: 12 },
+  header: { paddingHorizontal: 20, paddingTop: 8, marginBottom: 16 },
+  eyebrowRow: { flexDirection: "row", alignItems: "center", gap: 8, marginBottom: 8 },
+  liveDot: { width: 7, height: 7, borderRadius: 4 },
+  eyebrow: { fontSize: 10, fontFamily: "Inter_700Bold", letterSpacing: 1.2 },
+  title: { fontSize: 28, fontFamily: "Inter_700Bold", letterSpacing: -0.5 },
+  subtitle: { fontSize: 14, lineHeight: 20, fontFamily: "Inter_400Regular", marginTop: 6, maxWidth: 360 },
+  connectionBanner: { flexDirection: "row", alignItems: "center", marginHorizontal: 20, borderRadius: 16, borderWidth: 1, padding: 12, gap: 10, marginBottom: 16 },
+  connectionIcon: { width: 36, height: 36, borderRadius: 12, justifyContent: "center", alignItems: "center" },
+  connectionCopy: { flex: 1, gap: 3 },
+  connectionTitle: { fontSize: 13, fontFamily: "Inter_700Bold" },
+  connectionDetail: { fontSize: 11, lineHeight: 15, fontFamily: "Inter_400Regular" },
+  smallAction: { borderRadius: 10, paddingHorizontal: 12, paddingVertical: 8 },
+  smallActionText: { fontSize: 12, fontFamily: "Inter_700Bold" },
+  modeScroller: { marginBottom: 16 },
+  modeContent: { paddingHorizontal: 20, gap: 8 },
+  modePill: { flexDirection: "row", alignItems: "center", gap: 7, borderRadius: 12, borderWidth: 1, paddingHorizontal: 12, paddingVertical: 10 },
+  modeLabel: { fontSize: 12, fontFamily: "Inter_600SemiBold" },
+  emptyCard: { marginHorizontal: 20, borderRadius: 20, borderWidth: 1, padding: 22, alignItems: "center", marginBottom: 24 },
+  emptyIcon: { width: 56, height: 56, borderRadius: 18, justifyContent: "center", alignItems: "center", marginBottom: 12 },
+  emptyTitle: { fontSize: 18, fontFamily: "Inter_700Bold", textAlign: "center" },
+  emptyDescription: { fontSize: 13, lineHeight: 19, fontFamily: "Inter_400Regular", textAlign: "center", marginTop: 8 },
+  emptyList: { width: "100%", gap: 10, marginTop: 18, marginBottom: 18 },
+  emptyListRow: { flexDirection: "row", alignItems: "center", gap: 9 },
+  emptyListText: { flex: 1, fontSize: 12, fontFamily: "Inter_500Medium" },
+  primaryButton: { flexDirection: "row", alignItems: "center", gap: 8, borderRadius: 12, paddingHorizontal: 18, paddingVertical: 12 },
+  primaryButtonText: { fontSize: 13, fontFamily: "Inter_700Bold" },
+  sectionCard: { marginHorizontal: 20, borderRadius: 18, borderWidth: 1, padding: 16, marginBottom: 16 },
+  sectionHeading: { flexDirection: "row", alignItems: "center", gap: 10, marginBottom: 15 },
+  sectionIcon: { width: 34, height: 34, borderRadius: 11, alignItems: "center", justifyContent: "center" },
+  sectionHeadingText: { flex: 1, gap: 2 },
+  sectionTitle: { fontSize: 15, fontFamily: "Inter_700Bold" },
+  sectionDescription: { fontSize: 11, lineHeight: 15, fontFamily: "Inter_400Regular" },
+  metricGrid: { flexDirection: "row", flexWrap: "wrap", gap: 9 },
+  metricTile: { width: "31.8%", minHeight: 76, borderRadius: 13, borderWidth: 1, padding: 10, justifyContent: "center" },
+  metricLabel: { fontSize: 10, fontFamily: "Inter_500Medium", marginBottom: 4 },
+  metricValue: { fontSize: 16, fontFamily: "Inter_700Bold" },
+  metricDetail: { fontSize: 10, fontFamily: "Inter_400Regular", marginTop: 3 },
+  findingLabel: { fontSize: 10, fontFamily: "Inter_700Bold", letterSpacing: 1, marginTop: 17, marginBottom: 5 },
+  findingText: { fontSize: 13, lineHeight: 19, fontFamily: "Inter_500Medium" },
+  analysisBlock: { marginTop: 17, gap: 11 },
+  scoreHeader: { flexDirection: "row", alignItems: "center", justifyContent: "space-between", marginBottom: 2 },
+  scoreTitle: { fontSize: 13, fontFamily: "Inter_700Bold" },
+  scoreValue: { fontSize: 13, fontFamily: "Inter_700Bold" },
+  progressRow: { gap: 5 },
+  progressLabelRow: { flexDirection: "row", justifyContent: "space-between" },
+  progressLabel: { fontSize: 11, fontFamily: "Inter_500Medium" },
+  progressValue: { fontSize: 11, fontFamily: "Inter_700Bold" },
+  progressTrack: { height: 6, borderRadius: 3, overflow: "hidden" },
+  progressFill: { height: "100%", borderRadius: 3 },
+  inlineState: { flexDirection: "row", alignItems: "center", gap: 9, borderRadius: 12, padding: 13 },
+  inlineStateText: { flex: 1, fontSize: 12, fontFamily: "Inter_500Medium" },
+  contextCallout: { flexDirection: "row", gap: 9, borderRadius: 13, borderWidth: 1, padding: 12, marginTop: 15 },
+  contextCalloutText: { flex: 1, fontSize: 12, lineHeight: 18, fontFamily: "Inter_400Regular" },
+  chartCard: { marginHorizontal: 20, borderRadius: 18, borderWidth: 1, padding: 16, marginBottom: 16 },
+  chartTitleRow: { flexDirection: "row", alignItems: "center", justifyContent: "space-between", marginBottom: 8 },
   chartTitle: { fontSize: 14, fontFamily: "Inter_700Bold" },
-  chartTabs: { flexDirection: "row", gap: 4 },
-  chartTab: { paddingHorizontal: 10, paddingVertical: 4, borderRadius: 8 },
-  chartTabText: { fontSize: 11, fontFamily: "Inter_600SemiBold" },
-  chart: { marginTop: 6, borderRadius: 12 },
-  chartHint: { fontSize: 11, fontFamily: "Inter_400Regular", marginTop: 8 },
-  selfTestCard: { marginHorizontal: 20, borderRadius: 16, borderWidth: 1, padding: 16, marginBottom: 16, gap: 10 },
-  selfTestTitle: { fontSize: 14, fontFamily: "Inter_700Bold" },
-  selfTestRow: { flexDirection: "row", alignItems: "center", justifyContent: "space-between", gap: 8 },
-  selfTestLeft: { flexDirection: "row", alignItems: "center", gap: 10 },
-  selfTestDot: { width: 10, height: 10, borderRadius: 5 },
-  selfTestLabel: { fontSize: 13, fontFamily: "Inter_500Medium" },
-  selfTestState: { fontSize: 11, fontFamily: "Inter_600SemiBold", flexShrink: 1, textAlign: "right" },
-  placeholderCard: { marginHorizontal: 20, marginTop: 40, borderRadius: 16, borderWidth: 1, padding: 32, alignItems: "center", gap: 12 },
-  placeholderTitle: { fontSize: 16, fontFamily: "Inter_700Bold" },
-  placeholderDesc: { fontSize: 13, fontFamily: "Inter_400Regular", textAlign: "center" },
-  goToBleBtn: { flexDirection: "row", alignItems: "center", gap: 8, paddingHorizontal: 20, paddingVertical: 12, borderRadius: 12, marginTop: 8 },
-  goToBleText: { fontSize: 14, fontFamily: "Inter_700Bold" },
+  chartSubtitle: { fontSize: 11, fontFamily: "Inter_400Regular", marginTop: 3 },
+  chartBadge: { flexDirection: "row", alignItems: "center", gap: 5, borderRadius: 8, paddingHorizontal: 8, paddingVertical: 5 },
+  chartBadgeText: { fontSize: 9, fontFamily: "Inter_700Bold", letterSpacing: 0.8 },
+  chart: { marginTop: 8, borderRadius: 12, marginLeft: -8 },
+  chartEmpty: { marginHorizontal: 20, borderRadius: 18, borderWidth: 1, padding: 22, alignItems: "center", marginBottom: 16 },
+  chartEmptyTitle: { fontSize: 14, fontFamily: "Inter_700Bold", marginTop: 9 },
+  chartEmptyText: { fontSize: 12, lineHeight: 17, fontFamily: "Inter_400Regular", textAlign: "center", marginTop: 5 },
+  healthCard: { marginHorizontal: 20, borderRadius: 18, borderWidth: 1, padding: 16, marginBottom: 24 },
+  healthRows: { gap: 12 },
+  healthRow: { flexDirection: "row", alignItems: "center", gap: 9 },
+  healthLabel: { flex: 1, fontSize: 12, fontFamily: "Inter_500Medium" },
+  healthDetail: { fontSize: 11, fontFamily: "Inter_600SemiBold" },
+  pqcNote: { fontSize: 10, lineHeight: 15, fontFamily: "Inter_400Regular", marginTop: 15 },
+  toolsSection: { marginBottom: 24 },
+  toolScroller: { paddingHorizontal: 20, gap: 10 },
+  toolCard: { width: 188, minHeight: 168, borderRadius: 16, borderWidth: 1, padding: 14 },
+  toolIcon: { width: 36, height: 36, borderRadius: 12, alignItems: "center", justifyContent: "center", marginBottom: 11 },
+  toolTitle: { fontSize: 13, fontFamily: "Inter_700Bold" },
+  toolDescription: { fontSize: 11, lineHeight: 16, fontFamily: "Inter_400Regular", marginTop: 5, flex: 1 },
+  toolFooter: { flexDirection: "row", alignItems: "center", justifyContent: "space-between", marginTop: 13 },
+  toolAction: { fontSize: 11, fontFamily: "Inter_700Bold" },
+  meshCard: { marginHorizontal: 20, borderRadius: 18, borderWidth: 1, padding: 16, marginBottom: 20 },
+  meshRow: { flexDirection: "row", alignItems: "center", gap: 9, paddingVertical: 8, borderTopWidth: StyleSheet.hairlineWidth },
+  meshNodeDot: { width: 8, height: 8, borderRadius: 4 },
+  meshNodeName: { flex: 1, fontSize: 12, fontFamily: "Inter_500Medium" },
+  meshNodeStatus: { fontSize: 11, fontFamily: "Inter_600SemiBold" },
 });
