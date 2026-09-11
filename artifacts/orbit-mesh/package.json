@@ -75,5 +75,12 @@
     "onlyBuiltDependencies": [
       "dtrace-provider"
     ]
+  },
+  "expo": {
+    "install": {
+      "exclude": [
+        "react-native-maps"
+      ]
+    }
   }
 }
