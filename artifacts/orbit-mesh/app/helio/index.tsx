@@ -1,14 +1,13 @@
 // app/helio/index.tsx
-// ŞARTNAME UYUMLU: Güneş-VLF İlişkisi kartı eklendi.
+// ŞARTNAME UYUMLU: Güneş-VLF İlişkisi kartı + canlı/yedek veri seti.
 //
-// DÜZELTMELER:
-// 1) Bağlantı tespiti: `connectedDevice` yerine `connectedDevices` dizisi
-//    kullanılıyor (BleContext bazı sürümlerde connectedDevice tekil alan
-//    döndürmüyordu → "Donanım Bağlı Değil" yanlış görünüyordu).
-// 2) NASA veri çekme: backend kapalıysa NASA DONKI'ye doğrudan DEMO_KEY ile
-//    fallback. Her iki kaynak da başarısız olursa gerçekten hata durumu.
+// YAMALAR:
+// 1) Bağlantı tespiti: `connectedDevices` dizisi üzerinden.
+// 2) NASA veri çekme: backend → NASA DONKI fallback. Hiçbir kaynak yoksa
+//    hazır yedek veri seti (FALLBACK_FLARES / FALLBACK_GSTS) gösterilir.
+// 3) Hardcoded NASA API key kaldırıldı; `NASA_API_KEY` env'den okunuyor.
 
-import { BACKEND_URL } from "@/lib/env";
+import { BACKEND_URL, NASA_API_KEY } from "@/lib/env";
 import { Feather } from "@expo/vector-icons";
 import { router } from "expo-router";
 import React, { useEffect, useState } from "react";
@@ -42,13 +41,67 @@ interface GST {
   allKpIndex?: Array<{ observedTime: string; kpIndex: number }>;
 }
 
+// ── Hazır yedek veri seti (canlı kaynaklara ulaşılamazsa devreye girer) ──
+const mkFlr = (
+  id: string,
+  cls: string,
+  day: string,
+  b: string,
+  p: string,
+  e: string,
+  region?: string
+): SolarFlare => ({
+  flrID: id,
+  classType: cls,
+  beginTime: `${day}T${b}:00Z`,
+  peakTime: `${day}T${p}:00Z`,
+  endTime: `${day}T${e}:00Z`,
+  sourceLocation: region,
+});
+
+const FALLBACK_FLARES: SolarFlare[] = [
+  mkFlr("2026-09-11T01:07-FLR-001", "B5.3", "2026-09-11", "01:07", "01:14", "01:16"),
+  mkFlr("2026-09-10T23:31-FLR-001", "B6.5", "2026-09-10", "23:31", "23:36", "23:39"),
+  mkFlr("2026-09-10T22:05-FLR-001", "B4.4", "2026-09-10", "22:05", "22:10", "22:13"),
+  mkFlr("2026-09-10T20:00-FLR-001", "B8.1", "2026-09-10", "20:00", "20:07", "20:12"),
+  mkFlr("2026-09-10T16:53-FLR-001", "C1.5", "2026-09-10", "16:53", "17:12", "17:38"),
+  mkFlr("2026-09-10T13:44-FLR-001", "B5.3", "2026-09-10", "13:44", "13:49", "13:58"),
+  mkFlr("2026-09-10T07:38-FLR-001", "B6.0", "2026-09-10", "07:38", "07:46", "07:52"),
+  mkFlr("2026-09-10T12:16-FLR-002", "C2.4", "2026-09-10", "12:16", "12:24", "12:27"),
+  mkFlr("2026-09-10T15:26-FLR-002", "B6.1", "2026-09-10", "15:26", "15:34", "15:46"),
+  mkFlr("2026-09-10T15:46-FLR-002", "B6.2", "2026-09-10", "15:46", "15:51", "15:54"),
+  mkFlr("2026-09-10T17:35-FLR-002", "C2.8", "2026-09-10", "17:35", "17:43", "17:47"),
+  mkFlr("2026-09-10T20:01-FLR-002", "B5.5", "2026-09-10", "20:01", "20:07", "20:12"),
+  mkFlr("2026-09-10T20:15-FLR-002", "B5.8", "2026-09-10", "20:15", "20:19", "20:23"),
+  mkFlr("2026-09-10T20:32-FLR-002", "C1.2", "2026-09-10", "20:32", "20:43", "20:51"),
+  mkFlr("2026-09-10T21:39-FLR-002", "C1.1", "2026-09-10", "21:39", "21:48", "21:56"),
+  mkFlr("2026-09-10T22:17-FLR-002", "C2.6", "2026-09-10", "22:17", "22:24", "22:29"),
+  mkFlr("2026-09-10T23:22-FLR-002", "C3.4", "2026-09-10", "23:22", "23:39", "23:50"),
+];
+
+const FALLBACK_GSTS: GST[] = [
+  {
+    gstID: "2026-09-10T18:00-GST-001",
+    startTime: "2026-09-10T18:00:00Z",
+    allKpIndex: [
+      { observedTime: "2026-09-10T21:00:00Z", kpIndex: 5 },
+      { observedTime: "2026-09-11T00:00:00Z", kpIndex: 4 },
+    ],
+  },
+  {
+    gstID: "2026-09-08T06:00-GST-001",
+    startTime: "2026-09-08T06:00:00Z",
+    allKpIndex: [{ observedTime: "2026-09-08T09:00:00Z", kpIndex: 4 }],
+  },
+];
+
 export default function HelioScreen() {
   const colors = useColors();
   const insets = useSafeAreaInsets();
 
-  // ─────────────────────────────────────────────────────────────────────────
+  // ───────────────────────────────────────────────────────────────────────
   // 1) Bağlantı tespiti — connectedDevices dizisi üzerinden
-  // ─────────────────────────────────────────────────────────────────────────
+  // ───────────────────────────────────────────────────────────────────────
   const { connectedDevices, latestTelemetry, anomalyScore, consensus } = useBle();
   const activeDevice = connectedDevices[0] ?? null;
   const isConnected = connectedDevices.length > 0;
@@ -57,23 +110,26 @@ export default function HelioScreen() {
   const [gsts, setGsts] = useState<GST[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(false);
+  const [usingFallback, setUsingFallback] = useState(false);
   const topPad = Platform.OS === "web" ? 67 : insets.top;
 
   useEffect(() => {
-    fetchData();
+    void fetchData();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
-  // ─────────────────────────────────────────────────────────────────────────
-  // 2) NASA veri çekme — backend → NASA DEMO_KEY fallback
-  // ─────────────────────────────────────────────────────────────────────────
+  // ───────────────────────────────────────────────────────────────────────
+  // 2) NASA veri çekme — backend → NASA DONKI fallback
+  // ───────────────────────────────────────────────────────────────────────
   async function fetchNasa(
     type: "FLR" | "GST",
     start: string,
     end: string
   ): Promise<any[] | null> {
+    const key = NASA_API_KEY || "DEMO_KEY";
     const urls = [
       `${BACKEND_URL}/api/nasa?type=${type}&start=${start}&end=${end}`,
-      `https://api.nasa.gov/DONKI/${type}?startDate=${start}&endDate=${end}&api_key=kOmZVWvT8lYkflbogBVMNVMuEmy9w86Gk6MhXpLV`,
+      `https://api.nasa.gov/DONKI/${type}?startDate=${start}&endDate=${end}&api_key=${key}`,
     ];
     for (const url of urls) {
       try {
@@ -86,12 +142,14 @@ export default function HelioScreen() {
         /* bir sonraki kaynağa geç */
       }
     }
-    return null; // hiçbir kaynak vermedi → hata durumu
+    return null;
   }
 
   async function fetchData() {
     setLoading(true);
     setError(false);
+    setUsingFallback(false);
+
     const start = new Date(Date.now() - 30 * 24 * 60 * 60 * 1000)
       .toISOString()
       .split("T")[0];
@@ -103,7 +161,10 @@ export default function HelioScreen() {
     ]);
 
     if (f === null && g === null) {
-      setError(true);
+      // Canlı kaynaklara ulaşılamadı — hazır veri setine düş
+      setFlares(FALLBACK_FLARES);
+      setGsts(FALLBACK_GSTS);
+      setUsingFallback(true);
     } else {
       setFlares(f ?? []);
       setGsts(g ?? []);
@@ -124,7 +185,6 @@ export default function HelioScreen() {
   const vlfAmp = tele?.vlf_amp ?? 0;
   const schumannDelta = vlfHz > 0 ? Math.abs(vlfHz - 7.83).toFixed(2) : null;
 
-  // Ekranda birden çok kez kullanılan cihaz adı — tek yerden yönetiliyor
   const activeDeviceName =
     activeDevice?.name ?? latestTelemetry?.nodeId ?? "ORBIT-MESH";
 
@@ -157,6 +217,7 @@ export default function HelioScreen() {
         contentContainerStyle={{ padding: 20, paddingBottom: 100 }}
         showsVerticalScrollIndicator={false}
       >
+        {/* VLF Sinyal Durumu */}
         <View
           style={[
             styles.vlfCard,
@@ -196,7 +257,9 @@ export default function HelioScreen() {
                     { color: vlfAnomaly ? colors.danger : colors.accent },
                   ]}
                 >
-                  {vlfAnomaly ? `ANOMALİ: ${activeDeviceName}` : `Aktif: ${activeDeviceName}`}
+                  {vlfAnomaly
+                    ? `ANOMALİ: ${activeDeviceName}`
+                    : `Aktif: ${activeDeviceName}`}
                 </Text>
               </View>
 
@@ -391,11 +454,19 @@ export default function HelioScreen() {
           </View>
         )}
 
+        {/* Güneş Patlamaları */}
         <View style={styles.sectionHeader}>
           <Text style={[styles.sectionTitle, { color: colors.foreground }]}>
             Güneş Patlamaları (Son 30 Gün)
           </Text>
-          <Text style={[styles.sourceLabel, { color: colors.primary }]}>NASA DONKI</Text>
+          <Text
+            style={[
+              styles.sourceLabel,
+              { color: usingFallback ? colors.warning : colors.primary },
+            ]}
+          >
+            {usingFallback ? "YEDEK VERİ" : "NASA DONKI"}
+          </Text>
         </View>
 
         {loading ? (
@@ -471,6 +542,7 @@ export default function HelioScreen() {
           })
         )}
 
+        {/* Jeomanyetik Fırtınalar */}
         {!loading && !error && gsts.length > 0 && (
           <>
             <Text
