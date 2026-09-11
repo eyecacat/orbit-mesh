@@ -2,7 +2,6 @@
   "name": "workspace",
   "version": "0.0.0",
   "license": "MIT",
-  "packageManager": "pnpm@9.15.0",
   "scripts": {
     "build": "pnpm run typecheck && pnpm -r --if-present run build",
     "typecheck:libs": "tsc --build",
@@ -12,5 +11,13 @@
   "devDependencies": {
     "prettier": "^3.8.3",
     "typescript": "~5.9.3"
+  },
+  "dependencies": {
+    "@xmldom/xmldom": "^0.9.12"
+  },
+  "pnpm": {
+    "onlyBuiltDependencies": [
+      "dtrace-provider"
+    ]
   }
 }
