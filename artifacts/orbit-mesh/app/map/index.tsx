@@ -96,7 +96,7 @@ export default function MapScreen() {
       if (!cancelled && !location) {
         setLocationError("Konum alınamadı — varsayılan konum kullanılıyor.");
       }
-    }, 10000);
+    }, 18000);
     (async () => {
       try {
         const { status } = await Location.requestForegroundPermissionsAsync();
@@ -106,8 +106,8 @@ export default function MapScreen() {
           return;
         }
         const live = await Promise.race([
-          Location.getCurrentPositionAsync({ accuracy: Location.Accuracy.Balanced }),
-          new Promise<null>((res) => setTimeout(() => res(null), 8000)),
+          Location.getCurrentPositionAsync({ accuracy: Location.Accuracy.High }),
+          new Promise<null>((res) => setTimeout(() => res(null), 15000)),
         ]).catch(() => null);
         const loc = live ?? (await Location.getLastKnownPositionAsync().catch(() => null));
         if (!cancelled && loc) {
