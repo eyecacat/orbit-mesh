@@ -50,7 +50,8 @@ Thumbs.db
 
 # Local env files
 .env
-.env.localpackage-lock.json
+.env.local
+package-lock.json
 
 # Replit / Expo eklemeleri
 node_modules/
@@ -68,4 +69,4 @@ ios/
 *.bak3
 
 # Nested klon kopyası (asıl kod artifacts/orbit-mesh/ altında)
-orbit-mesh/
+/orbit-mesh/
