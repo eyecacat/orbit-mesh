@@ -461,9 +461,17 @@ export function BleProvider({ children }: { children: React.ReactNode }) {
         // ── V2.3 YAMASI: MTU 185 (512 yerine) + timeout 15s ──
         // Android 12+ büyük MTU isteklerinde servis keşfini kilitleyebiliyor.
         const raw = await mgr.connectToDevice(device.id, {
-          requestMTU: 185,
           timeout: 15000,
         });
+
+        // MTU'yu ayrıca iste — connect sırasında istemek Android 12+'da
+        // discover'ı kilitleyebiliyor. ESP32 tarafı 517'ye kadar destekliyor.
+        try {
+          const mtu = await raw.requestMTU(512);
+          addLog("info", `MTU anlaşması: ${mtu}`);
+        } catch (mtuErr: any) {
+          addLog("warn", `MTU isteği başarısız (varsayılan kullanılacak): ${mtuErr?.message ?? mtuErr}`);
+        }
         rawDeviceRefs.current.set(device.id, raw);
         addLog("info", `Bağlantı kuruldu: ${raw.id}`);
         setConnectedDevices((prev) => [...prev, device]);
