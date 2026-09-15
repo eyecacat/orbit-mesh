@@ -525,7 +525,7 @@ export function BleProvider({ children }: { children: React.ReactNode }) {
               }
               if (ch.uuid.toLowerCase() === STATUS_UUID.toLowerCase()) {
                 addLog("info", `[STATUS] ${rawJson.slice(0, 80)}...`);
-                return;
+                // NOT: return YOK — telemetri STATUS'ten geliyor, parse'a devam et
               }
 
               let telemetryJson = rawJson;
