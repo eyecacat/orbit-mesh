@@ -150,6 +150,8 @@ export function BleProvider({ children }: { children: React.ReactNode }) {
   const rawDeviceRefs = useRef<Map<string, BleDeviceType>>(new Map());
   const isExpoGoEnv = isExpoGo();
   const meshNodeRef = useRef<Map<string, MeshNodeStatus>>(new Map());
+  // V2.4: BLE fragment birleştirme buffer'ı (UUID bazlı)
+  const notificationBuffers = useRef<Map<string, string>>(new Map());
 
   const addLog = useCallback((level: LogLevel, message: string) => {
     const time = new Date().toLocaleTimeString("tr-TR", {
@@ -527,6 +529,22 @@ export function BleProvider({ children }: { children: React.ReactNode }) {
                 addLog("info", `[STATUS] ${rawJson.slice(0, 80)}...`);
                 // NOT: return YOK — telemetri STATUS'ten geliyor, parse'a devam et
               }
+
+              // ── V2.4: BLE fragment birleştirme ──
+              // MTU 185 (~182 byte payload) → firmware JSON'u (~350 byte) 2+ pakete bölünür.
+              // react-native-ble-plx fragment'ları OTOMATIK birleştirmez.
+              // Tam JSON görene kadar parçaları biriktir.
+              const bufKey = `${device.id}:${ch.uuid}`;
+              const prevBuf = notificationBuffers.current.get(bufKey) ?? "";
+              const accumulated = prevBuf + rawJson;
+
+              if (!accumulated.trim().endsWith("}")) {
+                notificationBuffers.current.set(bufKey, accumulated);
+                addLog("info", `[FRAG] +${rawJson.length}b (toplam ${accumulated.length}b) — devamı bekleniyor`);
+                return;
+              }
+              notificationBuffers.current.delete(bufKey);
+              rawJson = accumulated;
 
               let telemetryJson = rawJson;
               let pqcActive = false;
