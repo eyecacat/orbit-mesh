@@ -1,7 +1,10 @@
 // context/BleContext.tsx
-// ORBIT-MESH PRO V2.1 ULTRA — ÇOKLU BLE BAĞLANTI (MESH) DESTEĞİ
-// Tüm IMU alanları kaldırıldı, yeni şema (OrbitMeshTelemetry) kullanılıyor.
-// Artık birden fazla Deneyap Kart aynı anda bağlanabilir.
+// ORBIT-MESH PRO V2.3 — ÇOKLU BLE BAĞLANTI (MESH) DESTEĞİ
+// V2.3 YAMALARI:
+//  - requestMTU 512 → 185 (Android 12+ discover takılmasını çözer)
+//  - connectToDevice'a timeout: 15000 eklendi
+//  - discover adımları log'a yazılıyor
+//  - Parse hatasında raw JSON'un ilk 150 karakteri log'a düşer
 
 import React, {
   createContext,
@@ -88,8 +91,7 @@ export interface BleContextValue {
   permissionsGranted: boolean | null;
   scanning: boolean;
   devices: BleDeviceInfo[];
-  connectedDevices: BleDeviceInfo[];         // ÇOKLU cihaz listesi
-  /** Backward-compatible convenience alias for screens that show one device. */
+  connectedDevices: BleDeviceInfo[];
   connectedDevice: BleDeviceInfo | null;
   telemetry: OrbitMeshTelemetry[];
   latestTelemetry: OrbitMeshTelemetry | null;
@@ -169,13 +171,11 @@ export function BleProvider({ children }: { children: React.ReactNode }) {
     );
   }, []);
 
-  // Mesh node güncelleme
   const updateMeshNode = useCallback(
     (t: OrbitMeshTelemetry, connected: boolean, rssi: number | null = null) => {
       const score = computeAnomalyScore(t);
-      const moving = t.mot_vel > 0.5 && t.mot_conf > 50;
+      const moving = (t as any).mot_vel > 0.5 && (t as any).mot_conf > 50;
       setNodeMoving(moving);
-      // Anomali skorunu global olarak güncelle (son gelen veriye göre)
       setAnomalyScore(score);
 
       const health =
@@ -191,7 +191,9 @@ export function BleProvider({ children }: { children: React.ReactNode }) {
 
       const node: MeshNodeStatus = {
         id: t.nodeId,
-        name: connected ? (connectedDevices.find(d => d.id === t.nodeId)?.name ?? null) : null,
+        name: connected
+          ? connectedDevices.find((d) => d.id === t.nodeId)?.name ?? null
+          : null,
         lastSeen: t.receivedAt,
         telemetry: t,
         anomalyScore: score,
@@ -216,7 +218,10 @@ export function BleProvider({ children }: { children: React.ReactNode }) {
     }
     if (isExpoGoEnv) {
       setIsAvailable(false);
-      addLog("warn", "Expo Go: BLE native modülü çalışmaz. EAS Development Build gerekli.");
+      addLog(
+        "warn",
+        "Expo Go: BLE native modülü çalışmaz. EAS Development Build gerekli."
+      );
       return;
     }
     const mgr = getManager();
@@ -232,7 +237,10 @@ export function BleProvider({ children }: { children: React.ReactNode }) {
         addLog("info", `Bluetooth durumu: ${state}`);
       }, true);
     } else {
-      mgr.state().then((state) => setIsAvailable(state === "PoweredOn")).catch(() => {});
+      mgr
+        .state()
+        .then((state) => setIsAvailable(state === "PoweredOn"))
+        .catch(() => {});
     }
   }, [addLog, isExpoGoEnv]);
 
@@ -277,7 +285,9 @@ export function BleProvider({ children }: { children: React.ReactNode }) {
           PermissionsAndroid.PERMISSIONS.BLUETOOTH_CONNECT,
           PermissionsAndroid.PERMISSIONS.ACCESS_FINE_LOCATION,
         ]);
-        granted = Object.values(res).every((v) => v === PermissionsAndroid.RESULTS.GRANTED);
+        granted = Object.values(res).every(
+          (v) => v === PermissionsAndroid.RESULTS.GRANTED
+        );
       } else {
         const res = await PermissionsAndroid.request(
           PermissionsAndroid.PERMISSIONS.ACCESS_FINE_LOCATION
@@ -285,7 +295,12 @@ export function BleProvider({ children }: { children: React.ReactNode }) {
         granted = res === PermissionsAndroid.RESULTS.GRANTED;
       }
       setPermissionsGranted(granted);
-      addLog(granted ? "info" : "error", granted ? "Android BLE izinleri verildi." : "Android BLE izinleri reddedildi.");
+      addLog(
+        granted ? "info" : "error",
+        granted
+          ? "Android BLE izinleri verildi."
+          : "Android BLE izinleri reddedildi."
+      );
       return granted;
     } catch (err: any) {
       addLog("error", `İzin hatası: ${err?.message ?? err}`);
@@ -329,7 +344,9 @@ export function BleProvider({ children }: { children: React.ReactNode }) {
         const rssi = device.rssi ?? null;
         const matchesName = name ? name.startsWith(ORBIT_NAME_PREFIX) : false;
         const matchesService = device.serviceUUIDs
-          ? device.serviceUUIDs.some((u) => u.toLowerCase() === SERVICE_UUID.toLowerCase())
+          ? device.serviceUUIDs.some(
+              (u) => u.toLowerCase() === SERVICE_UUID.toLowerCase()
+            )
           : false;
         if (!matchesName && !matchesService) return;
 
@@ -344,12 +361,21 @@ export function BleProvider({ children }: { children: React.ReactNode }) {
 
         if (!discoveredIds.current.has(id)) {
           discoveredIds.current.add(id);
-          addLog("scan", `Cihaz bulundu: ${name ?? id} (RSSI: ${rssi ?? "?"} dBm)`);
-          setDevices((prev) => [...prev, info].sort((a, b) => (b.rssi ?? -100) - (a.rssi ?? -100)));
+          addLog(
+            "scan",
+            `Cihaz bulundu: ${name ?? id} (RSSI: ${rssi ?? "?"} dBm)`
+          );
+          setDevices((prev) =>
+            [...prev, info].sort((a, b) => (b.rssi ?? -100) - (a.rssi ?? -100))
+          );
         } else {
           setDevices((prev) =>
             prev
-              .map((d) => (d.id === id ? { ...d, rssi, isConnectable: info.isConnectable } : d))
+              .map((d) =>
+                d.id === id
+                  ? { ...d, rssi, isConnectable: info.isConnectable }
+                  : d
+              )
               .sort((a, b) => (b.rssi ?? -100) - (a.rssi ?? -100))
           );
         }
@@ -392,7 +418,11 @@ export function BleProvider({ children }: { children: React.ReactNode }) {
       }
       try {
         const b64 = btoa(text);
-        await raw.writeCharacteristicWithResponseForService(SERVICE_UUID, COMMAND_UUID, b64);
+        await raw.writeCharacteristicWithResponseForService(
+          SERVICE_UUID,
+          COMMAND_UUID,
+          b64
+        );
         addLog("info", `[CMD→] ${text}`);
       } catch (err: any) {
         addLog("warn", `[CMD] Gönderilemedi "${text}": ${err?.message ?? err}`);
@@ -415,7 +445,6 @@ export function BleProvider({ children }: { children: React.ReactNode }) {
       const mgr = getManager();
       if (!mgr) return;
 
-      // Zaten bağlı mı kontrol et
       if (connectedDevices.some((d) => d.id === device.id)) {
         addLog("info", `Cihaz zaten bağlı: ${device.name ?? device.id}`);
         return;
@@ -427,14 +456,21 @@ export function BleProvider({ children }: { children: React.ReactNode }) {
         mgr.stopDeviceScan();
         setScanning(false);
 
-        const raw = await mgr.connectToDevice(device.id, { requestMTU: 512 });
+        // ── V2.3 YAMASI: MTU 185 (512 yerine) + timeout 15s ──
+        // Android 12+ büyük MTU isteklerinde servis keşfini kilitleyebiliyor.
+        const raw = await mgr.connectToDevice(device.id, {
+          requestMTU: 185,
+          timeout: 15000,
+        });
         rawDeviceRefs.current.set(device.id, raw);
         addLog("info", `Bağlantı kuruldu: ${raw.id}`);
         setConnectedDevices((prev) => [...prev, device]);
 
-        // Bağlantı kopma dinleyicisi
         const disSub = mgr.onDeviceDisconnected(device.id, (err, _d) => {
-          addLog("warn", err ? `Bağlantı koptu: ${err.message}` : "Cihaz bağlantısı kesildi.");
+          addLog(
+            "warn",
+            err ? `Bağlantı koptu: ${err.message}` : "Cihaz bağlantısı kesildi."
+          );
           removeNode(device.id);
           meshNodeRef.current.delete(device.id);
           setMeshNodes(Array.from(meshNodeRef.current.values()));
@@ -444,8 +480,10 @@ export function BleProvider({ children }: { children: React.ReactNode }) {
         });
         _disconnectSubs.set(device.id, disSub);
 
+        // ── V2.3 YAMASI: discover adım logları ──
+        addLog("info", "→ Servis keşfi başlıyor...");
         const discovered = await raw.discoverAllServicesAndCharacteristics();
-        addLog("info", "Servisler ve karakteristikler keşfedildi.");
+        addLog("info", "→ Servis keşfi tamamlandı.");
 
         const services = await discovered.services();
         let subscribedCount = 0;
@@ -458,14 +496,17 @@ export function BleProvider({ children }: { children: React.ReactNode }) {
             const sub = ch.monitor((err, characteristic) => {
               if (err) {
                 if ((err as any).errorCode !== 205) {
-                  addLog("error", `Bildirim hatası [${ch.uuid.slice(0, 8)}]: ${err.message}`);
+                  addLog(
+                    "error",
+                    `Bildirim hatası [${ch.uuid.slice(0, 8)}]: ${err.message}`
+                  );
                 }
                 return;
               }
               if (!characteristic?.value) return;
 
               const b64 = characteristic.value ?? "";
-              addLog("scan", `[BASE64] ${b64}`);
+              addLog("scan", `[BASE64] ${b64.slice(0, 80)}...`);
 
               let rawJson: string;
               try {
@@ -476,17 +517,19 @@ export function BleProvider({ children }: { children: React.ReactNode }) {
               }
 
               if (ch.uuid.toLowerCase() === COMMAND_UUID.toLowerCase()) {
-                addLog(rawJson.startsWith("TIME_INVALID") ? "warn" : "info", `[CMD←] ${rawJson}`);
+                addLog(
+                  rawJson.startsWith("TIME_INVALID") ? "warn" : "info",
+                  `[CMD←] ${rawJson}`
+                );
                 return;
               }
               if (ch.uuid.toLowerCase() === STATUS_UUID.toLowerCase()) {
-                addLog("info", `[STATUS] ${rawJson}`);
+                addLog("info", `[STATUS] ${rawJson.slice(0, 80)}...`);
                 return;
               }
 
               let telemetryJson = rawJson;
               let pqcActive = false;
-              let pqcValid = true;
 
               if (rawJson.includes('"__pqc"')) {
                 let pqcPacket: PQCPacket;
@@ -504,36 +547,46 @@ export function BleProvider({ children }: { children: React.ReactNode }) {
                 const verifyResult = pqcManager.verifyPacket(tempNodeId, pqcPacket);
                 pqcActive = true;
                 if (!verifyResult.valid) {
-                  addLog("error", `[PQC] DOĞRULAMA BAŞARISIZ [${tempNodeId}]: ${verifyResult.reason}`);
+                  addLog(
+                    "error",
+                    `[PQC] DOĞRULAMA BAŞARISIZ [${tempNodeId}]: ${verifyResult.reason}`
+                  );
                   return;
                 }
-                pqcValid = true;
                 telemetryJson = verifyResult.decryptedPayload ?? pqcPacket.payload;
-                addLog("info", `[PQC] Paket doğrulandı [${tempNodeId}] — sayaç: ${pqcPacket.counter}`);
+                addLog(
+                  "info",
+                  `[PQC] Paket doğrulandı [${tempNodeId}] — sayaç: ${pqcPacket.counter}`
+                );
               } else {
                 addLog("info", "[PQC] Legacy paket — PQC yok, geçiriliyor");
               }
 
               const parsed = parseTelemetry(btoa(telemetryJson));
               if (!parsed.data) {
-                addLog("error", `[PARSE] ${parsed.error}`);
+                // ── V2.3 YAMASI: raw JSON ilk 150 karakter log'a düşer ──
+                addLog(
+                  "error",
+                  `[PARSE] ${parsed.error} | RAW: ${telemetryJson.slice(0, 150)}`
+                );
                 return;
               }
 
               const t = parsed.data;
               addLog(
                 "info",
-                `[PARSED${pqcActive ? "+PQC" : ""}] node=${t.nodeId} vlf=${t.vlf_hz}Hz amp=${t.vlf_amp} bat=${t.bat}% state=${t.state}${t.anomaly ? " ANOMALI" : ""}`
+                `[PARSED${pqcActive ? "+PQC" : ""}] node=${t.nodeId} vlf=${
+                  t.vlf_hz
+                }Hz amp=${t.vlf_amp} bat=${t.bat}% state=${t.state}${
+                  t.anomaly ? " ANOMALI" : ""
+                }`
               );
 
               setTelemetry((prev) => [t, ...prev].slice(0, 200));
-              // Gelen veriyi ilgili node'a ata
               const nodeId = t.nodeId || device.id;
-              // Node'un ismini güncelle
               const existingNode = meshNodeRef.current.get(nodeId);
               const nodeName = existingNode?.name ?? device.name ?? nodeId;
               updateMeshNode(t, true, device.rssi ?? null);
-              // Ayrıca node adını da güncelle
               if (existingNode) {
                 existingNode.name = nodeName;
                 meshNodeRef.current.set(nodeId, existingNode);
@@ -541,21 +594,29 @@ export function BleProvider({ children }: { children: React.ReactNode }) {
               }
             });
 
-            // Aboneliği kaydet
             (sub as any)._deviceId = device.id;
             _notifySubs.push(sub);
             subscribedCount++;
-            addLog("info", `  Bildirim: ${ch.uuid.slice(0, 8)} (${svc.uuid.slice(0, 8)})`);
+            addLog(
+              "info",
+              `  Bildirim: ${ch.uuid.slice(0, 8)} (${svc.uuid.slice(0, 8)})`
+            );
           }
         }
 
         if (subscribedCount === 0) {
-          addLog("warn", "Notifiable karakteristik bulunamadı. Firmware SERVICE_UUID ile eşleşiyor mu?");
+          addLog(
+            "warn",
+            "Notifiable karakteristik bulunamadı. Firmware STATUS_UUID ile eşleşiyor mu?"
+          );
         }
 
         void syncDeviceTime(device.id);
       } catch (err: any) {
-        addLog("error", `Bağlantı hatası: ${err?.message ?? err}`);
+        addLog(
+          "error",
+          `Bağlantı hatası: ${err?.message ?? err} | code: ${err?.errorCode ?? "?"}`
+        );
         _cleanupConnection(device.id);
         setConnectedDevices((prev) => prev.filter((d) => d.id !== device.id));
         throw err;
@@ -588,7 +649,6 @@ export function BleProvider({ children }: { children: React.ReactNode }) {
             });
         }
       } else {
-        // Tüm bağlantıları kes
         rawDeviceRefs.current.forEach((raw, id) => {
           raw.cancelConnection().catch(() => {});
         });
@@ -617,7 +677,7 @@ export function BleProvider({ children }: { children: React.ReactNode }) {
         scanning,
         devices,
         connectedDevices,
-      connectedDevice: connectedDevices[0] ?? null,
+        connectedDevice: connectedDevices[0] ?? null,
         telemetry,
         latestTelemetry,
         logs,
